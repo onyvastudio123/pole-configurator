@@ -12,7 +12,7 @@
   const nid = () => 'n' + (uid++), eid = () => 'e' + (uid++);
 
   const state = {
-    nodes: [], edges: [], overrides: {}, extras: [],
+    nodes: [], edges: [], overrides: {}, extras: [], panels: [],
     settings: {
       grid: 100, insertDepth: 30, kerf: 2, wall: 3.2,
       vat: true, pipeMode: 'stock', showFittings: true, showGrid: true,
@@ -21,18 +21,20 @@
       lockAngles: true,       // only allow lengths every joint has a fitting for
       standardOnly: false,    // restrict poles to whole pipes as sold
       showAngles: true,       // draw joint angles on the model
-      showAllAngles: false    // ...including the 90s, which are usually obvious
+      showAllAngles: false,   // ...including the 90s, which are usually obvious
+      padSpacing: 600,        // mm between fixing pads along a pole
+      sheet: 'ply12'          // default panel material
     }
   };
   let history = [], future = [];
 
   function snapshot() {
-    return JSON.stringify({ nodes: state.nodes, edges: state.edges, overrides: state.overrides, extras: state.extras });
+    return JSON.stringify({ nodes: state.nodes, edges: state.edges, overrides: state.overrides, extras: state.extras, panels: state.panels });
   }
   function pushHistory() { history.push(snapshot()); if (history.length > 80) history.shift(); future = []; }
   function restore(s) {
     const d = JSON.parse(s);
-    state.nodes = d.nodes; state.edges = d.edges; state.overrides = d.overrides || {}; state.extras = d.extras || [];
+    state.nodes = d.nodes; state.edges = d.edges; state.overrides = d.overrides || {}; state.extras = d.extras || []; state.panels = d.panels || [];
     uid = 1; state.nodes.concat(state.edges).forEach((o) => {
       const n = parseInt(String(o.id).slice(1), 10); if (n >= uid) uid = n + 1;
     });
@@ -690,6 +692,49 @@
     return Math.atan2((ev.clientY - r.top) - py, (ev.clientX - r.left) - px);
   }
 
+  /**
+   * If the selected poles hang off the rest of the structure by exactly one
+   * joint, and that joint sits on a straight pole, the assembly can only really
+   * do one thing: ride up and down that pole. Constraining the move to the host
+   * pole's axis keeps the host straight, instead of dragging its joint sideways
+   * and bending it. Returns the axis to slide along, or null.
+   */
+  function slideConstraint(ids, selEdges) {
+    if (!selEdges || !selEdges.size) return null;
+    const anchors = [];
+    ids.forEach((id) => {
+      const ext = state.edges.filter((e) =>
+        (e.a === id || e.b === id) && !selEdges.has(e.id));
+      if (ext.length) anchors.push({ id, ext });
+    });
+    if (anchors.length !== 1) return null;          // free-floating, or pinned twice
+
+    const { id, ext } = anchors[0];
+    const n = state.nodes.find((x) => x.id === id);
+    if (!n) return null;
+    const o = new THREE.Vector3(n.p[0], n.p[1], n.p[2]);
+    const dirs = ext.map((e) => {
+      const other = state.nodes.find((x) => x.id === (e.a === id ? e.b : e.a));
+      return new THREE.Vector3(other.p[0], other.p[1], other.p[2]).sub(o).normalize();
+    });
+
+    let axis = null;
+    if (dirs.length === 1) {
+      axis = dirs[0].clone();                       // hanging off the end of a pole
+    } else {
+      for (let i = 0; i < dirs.length && !axis; i++) {
+        for (let j = i + 1; j < dirs.length; j++) {
+          if (dirs[i].dot(dirs[j]) < -0.98) { axis = dirs[i].clone(); break; }
+        }
+      }
+    }
+    if (!axis) return null;                         // a corner, not a straight pole
+    axis.normalize();
+    // point it "up the pole" so the readout reads the way the thing moves
+    if (axis.y < -0.01 || (Math.abs(axis.y) <= 0.01 && axis.x + axis.z < 0)) axis.negate();
+    return { nodeId: id, axis, origin: o };
+  }
+
   function beginTransform(kind) {
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
     // `ids` and `origin` are indexed against each other all through the
@@ -713,6 +758,13 @@
       startHit: null, startAngle: null,
       typed: '', fine: false, delta: 0
     };
+
+    // poles attached to the rest of the structure at one joint slide along it
+    if (kind === 'move' && selection && selection.type === 'run') {
+      const selEdges = new Set();
+      currentRuns().forEach((r) => r.edges.forEach((e) => selEdges.add(e)));
+      xform.slide = slideConstraint(ids, selEdges);
+    }
     controls.enabled = false;
     $('#viewport').style.cursor = kind === 'move' ? 'move' : 'crosshair';
     drawXformHud();
@@ -990,6 +1042,46 @@
     toast(made.length > 1 ? made.length + ' poles copied — click to place' : 'Copied — click to place');
   }
 
+  /**
+   * Fill the opening framed by the selected poles with a sheet, bolted on with
+   * Double Fixing Pads. Stored as the poles it hangs on, so it follows the
+   * frame when the frame is moved or resized.
+   */
+  const currentSheet = () =>
+    window.CATALOGUE.SHEETS.find((s) => s.id === state.settings.sheet)
+    || window.CATALOGUE.SHEETS[0];
+
+  function addPanel() {
+    const runs = currentRuns();
+    if (runs.length < 2) { toast('Select the poles around an opening first'); return; }
+    const edges = [];
+    runs.forEach((r) => r.edges.forEach((e) => { if (edges.indexOf(e) === -1) edges.push(e); }));
+
+    const panel = {
+      id: 'pn' + (uid++),
+      edges,
+      material: state.settings.sheet
+    };
+    const solvedPanel = window.KCEngine.solvePanel(panel, state);
+    if (!solvedPanel) { toast('Those poles do not frame a flat opening'); return; }
+
+    pushHistory();
+    state.panels.push(panel);
+    selection = null;
+    rebuild();
+    const a = solvedPanel.areaM2.toFixed(2);
+    toast(solvedPanel.warn
+      ? 'Panel added — ' + solvedPanel.warn
+      : 'Panel added · ' + a + ' m² · ' + solvedPanel.pads + ' fixing pads');
+  }
+
+  function deletePanel(id) {
+    pushHistory();
+    state.panels = state.panels.filter((p) => p.id !== id);
+    selection = null;
+    rebuild();
+  }
+
   function resetXformNodes() {
     if (!xform) return;
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
@@ -1008,7 +1100,11 @@
       if (xform.typed !== '' && xform.axis) {
         delta = AXIS_VEC[xform.axis].clone().multiplyScalar(parseFloat(xform.typed) || 0);
       } else if (ev) {
-        const axis = xform.axis ? AXIS_VEC[xform.axis] : null;
+        // A slide is an axis constraint like any other, so read the mouse on a
+        // plane containing that axis — a horizontal plane can never yield
+        // vertical movement, which is most of what sliding up a post is.
+        const axis = xform.axis ? AXIS_VEC[xform.axis]
+                   : (xform.slide ? xform.slide.axis : null);
         let normal, hit;
         if (axis) {
           // a plane that contains the axis and faces the camera as much as it can
@@ -1029,6 +1125,15 @@
                   Math.round(delta.y / step) * step,
                   Math.round(delta.z / step) * step);
       }
+      // Ride the host pole rather than dragging its joint off the line. An
+      // explicit axis lock (X/Y/Z) means the user wants free movement instead.
+      if (xform.slide && !xform.axis) {
+        const step = xform.fine ? 1 : state.settings.grid;
+        let t = delta.dot(xform.slide.axis);
+        t = Math.round(t / step) * step;
+        delta = xform.slide.axis.clone().multiplyScalar(t);
+      }
+
       xform.delta = delta;
       xform.ids.forEach((id, i) => {
         const n = byId.get(id); if (!n) return;
@@ -1065,13 +1170,16 @@
     // Look for something to join onto — but never when an exact value was
     // typed, since that is a deliberate measurement, not a gesture.
     xform.snap = null;
+    // Sliding is already anchored to a pole; letting the snap pull it off that
+    // line would defeat the constraint.
+    const sliding = !!(xform.slide && !xform.axis && xform.kind === 'move');
     // A copy starts life on top of its original, which would snap straight back
     // into it. Hold snapping off until it has been dragged clear.
     const clearOfOrigin = !xform.isDup ||
       (xform.kind === 'move' && xform.delta && xform.delta.length
         ? xform.delta.length() > Math.max(80, state.settings.grid * 0.75) * 1.25
         : false);
-    if (xform.typed === '' && !xform.fine && clearOfOrigin) {
+    if (xform.typed === '' && !xform.fine && clearOfOrigin && !sliding) {
       const s = findSnap(byId);
       if (s) {
         xform.snap = s;
@@ -1107,10 +1215,15 @@
     let main;
     if (xform.kind === 'move') {
       const d = xform.delta || new THREE.Vector3();
-      main = xform.typed !== ''
-        ? 'Move ' + axisName + ' ' + xform.typed + ' mm'
-        : 'Move ' + axisName + '  ' +
+      if (xform.slide && !xform.axis) {
+        const t = d.dot ? d.dot(xform.slide.axis) : 0;
+        main = 'Slide along pole  ' + (t > 0 ? '+' : '') + Math.round(t) + ' mm';
+      } else if (xform.typed !== '') {
+        main = 'Move ' + axisName + ' ' + xform.typed + ' mm';
+      } else {
+        main = 'Move ' + axisName + '  ' +
           [d.x, d.y, d.z].map((v) => (v > 0 ? '+' : '') + Math.round(v)).join(', ') + ' mm';
+      }
     } else {
       main = 'Rotate ' + axisName + '  ' +
         (xform.typed !== '' ? xform.typed : Math.round(xform.delta || 0)) + '°';
@@ -1141,7 +1254,9 @@
     $('#xformLabel').textContent = main;
     $('#xformHint').textContent = xform.snap
       ? 'release to join · Shift holds it off'
-      : 'X Y Z axis · type a number · Shift fine · click to confirm · Esc cancels';
+      : (xform.slide && !xform.axis)
+        ? 'held on the pole it hangs from · X Y Z to break away · Esc cancels'
+        : 'X Y Z axis · type a number · Shift fine · click to confirm · Esc cancels';
     el.classList.toggle('snapped', !!xform.snap);
     el.classList.add('on');
   }
@@ -1233,7 +1348,9 @@
 
   function showWidget() {
     const w = $('#poleWidget');
-    if (xform) { w.classList.remove('on'); return; }   // out of the way while transforming
+    if (xform || (selection && selection.type === 'panel')) {
+      w.classList.remove('on'); return;                // out of the way
+    }
     const runs = currentRuns();
     const run = runs[0];
     if (!run) {
@@ -1704,6 +1821,13 @@
       });
     }
 
+    // infill panels, drawn from the poles they hang on
+    (bomData.panels || []).forEach((p) => {
+      const sel = selection && selection.type === 'panel' && selection.id === p.id;
+      const g = window.KCModels.buildPanel(p, { highlight: sel });
+      structureGroup.add(g);
+    });
+
     renderBom(bomData);
     updateHud();
     renderInspector();
@@ -1774,6 +1898,23 @@
       h += '<div class="subtot"><span>Pipe subtotal (buy to length)</span><b>' + money(b.pipeCost) + '</b></div>';
     }
 
+    if (b.panelRows && b.panelRows.length) {
+      h += '<h3>Panels</h3><table class="bomtable"><tbody>';
+      b.panelRows.forEach((p) => {
+        h += '<tr><td class="q">1&times;</td><td>' + p.name +
+          '<span class="sku">' + p.areaM2.toFixed(2) + ' m&sup2; · ' +
+          p.pads + ' fixing pads</span></td>' +
+          '<td class="n">' + money(p.cost) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      h += '<div class="subtot"><span>Panel subtotal</span><b>' + money(b.panelCost) + '</b></div>';
+      h += '<p class="warn">Sheet rates are ONYVA placeholders, not supplier prices — ' +
+        'Pipe Dream does not sell sheet. Set your own &pound;/m&sup2; in Setup before quoting.</p>';
+      b.panelRows.filter((p) => p.warn).forEach((p) => {
+        h += '<p class="warn">' + p.warn + '</p>';
+      });
+    }
+
     h += '<div class="totals">' +
       '<div><span>Subtotal (ex VAT)</span><b>' + money(b.sub) + '</b></div>' +
       (state.settings.vat ? '<div><span>VAT @ 20%</span><b>' + money(b.vat) + '</b></div>' : '') +
@@ -1790,6 +1931,33 @@
   function renderInspector() {
     const box = $('#inspector');
     if (!selection) { box.innerHTML = '<p class="empty">Select a pipe or a joint to inspect it.</p>'; return; }
+
+    if (selection.type === 'panel') {
+      const stored = state.panels.find((p) => p.id === selection.id);
+      const p = (solved.bomData.panels || []).find((x) => x.id === selection.id);
+      if (!stored || !p) { box.innerHTML = '<p class="empty">Panel no longer exists.</p>'; return; }
+      let h = '<h3>Panel</h3>';
+      h += '<p class="big">' + p.material.name + '</p>';
+      h += '<p class="hint">' + p.areaM2.toFixed(2) + ' m&sup2; · ' + p.thickness + ' mm · ' +
+        p.pads + ' Double Fixing Pads · ' + money(p.areaM2 * p.material.perM2) + ' ex VAT</p>';
+      if (p.warn) h += '<p class="warn">' + p.warn + '</p>';
+      if (p.material.estimated) {
+        h += '<p class="warn">&pound;' + p.material.perM2.toFixed(2) +
+          '/m&sup2; is a placeholder, not a supplier price. Set your own in Setup.</p>';
+      }
+      h += '<label class="fld"><span>Material</span><select id="panelMat">' +
+        window.CATALOGUE.SHEETS.map((s) => '<option value="' + s.id + '"' +
+          (s.id === stored.material ? ' selected' : '') + '>' + s.name + '</option>').join('') +
+        '</select></label>';
+      h += '<button class="btn danger" id="delPanel">Delete panel</button>';
+      box.innerHTML = h;
+      $('#panelMat').onchange = (e) => {
+        pushHistory(); stored.material = e.target.value; rebuild();
+      };
+      $('#delPanel').onclick = () => deletePanel(selection.id);
+      return;
+    }
+
     if (selection.type === 'node') {
       const j = solved.joints.get(selection.id);
       if (!j) { box.innerHTML = '<p class="empty">Joint has no fitting.</p>'; return; }
@@ -2128,6 +2296,9 @@
     $('#vatChk').checked = state.settings.vat;
     $('#fitChk').checked = state.settings.showFittings;
     $('#gridChk').checked = state.settings.showGrid;
+    if ($('#sheetSel')) $('#sheetSel').value = state.settings.sheet;
+    if ($('#sheetRate') && currentSheet()) $('#sheetRate').value = currentSheet().perM2;
+    if ($('#padSpace')) $('#padSpace').value = state.settings.padSpacing;
     $('#angChk').checked = state.settings.showAngles;
     $('#ang90Chk').checked = state.settings.showAllAngles;
     $('#pipeMode').value = state.settings.pipeMode;
@@ -2166,6 +2337,26 @@
     };
     $('#pwFlip').onclick = () => { flipEnd = !flipEnd; showWidget(); };
     $('#pwDup').onclick = duplicateRun;
+    $('#pwPanel').onclick = addPanel;
+
+    // panel settings
+    const sheetSel = $('#sheetSel');
+    sheetSel.innerHTML = window.CATALOGUE.SHEETS
+      .map((s) => '<option value="' + s.id + '">' + s.name + '</option>').join('');
+    sheetSel.onchange = (e) => {
+      state.settings.sheet = e.target.value;
+      $('#sheetRate').value = currentSheet().perM2;
+      rebuild();
+    };
+    $('#sheetRate').onchange = (e) => {
+      const s = currentSheet();
+      if (s) { s.perM2 = Math.max(0, +e.target.value || 0); s.estimated = false; }
+      rebuild();
+    };
+    $('#padSpace').onchange = (e) => {
+      state.settings.padSpacing = Math.max(150, Math.min(2000, +e.target.value || 600));
+      rebuild();
+    };
 
     addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -2212,6 +2403,7 @@
       if (e.key.toLowerCase() === 'g') beginTransform('move');
       if (e.key.toLowerCase() === 'r') beginTransform('rotate');
       if (e.key.toLowerCase() === 'd' && e.shiftKey) { e.preventDefault(); duplicateSelection(); }
+      if (e.key.toLowerCase() === 'p' && !e.shiftKey) addPanel();
       if (e.key === 'Delete' && selection) {
         const btn = $('#delNode') || $('#delRun'); if (btn) btn.click();
       }
@@ -2330,7 +2522,7 @@
     rebuild, frameAll, preset, exportCsv, exportJson,
     saveDesign, openDesign, autosave,
     beginTransform, applyTransform, endTransform, weldAll, duplicateRun,
-    duplicateSelection, drawAngleOverlays,
+    duplicateSelection, drawAngleOverlays, addPanel, deletePanel,
     get overlayCount() { return overlayGroup ? overlayGroup.children.length : 0; },
     handleAt, get hoverNode() { return hoverNode; },
     endRun, anchorPoint, get planeY() { return planeY; },

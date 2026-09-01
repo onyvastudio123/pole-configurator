@@ -52,6 +52,7 @@ the left button is free for selecting and never fights the camera.
 | Drag a joint | move that end directly (see below) |
 | `G` / `R` | move / rotate the selection (see below) |
 | `Shift`+`D` | duplicate the selection and place it with the mouse |
+| `P` | fill the selected opening with a panel |
 | `F` | fit the view to the structure |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
 | `Ctrl+S` / `Ctrl+O` | save / open a design |
@@ -92,6 +93,37 @@ loose end of an angled pole is easy to catch.
 
 Dragging an end snaps and joins exactly like `G` does, so pulling one pole's end
 onto another connects them.
+
+### Sliding an assembly along the pole it hangs from
+
+If the poles you have selected join the rest of the structure at exactly one
+joint, and that joint sits on a straight pole, `G` constrains the move to slide
+along that pole. The host stays dead straight and the assembly rides up and down
+it, instead of the shared joint being dragged sideways and bending everything.
+The readout says **Slide along pole**. Press `X`, `Y` or `Z` to break away and
+move freely instead.
+
+Dragging a single joint handle is never constrained — only whole poles.
+
+### Panels
+
+Select the poles framing an opening and press `P` (or **▦ Panel** in the
+resizer) to fill it with a sheet, bolted on with **Double Fixing Pads**
+(`KCBDFP-27`, £1.99, type 6080Z56B: 128 mm across the ears, 35 mm deep, 94 mm
+tall, two 10 mm holes).
+
+The panel is stored as the poles it hangs on, not as fixed coordinates, so it
+follows the frame when you stretch, move or rotate it. Pads are counted from the
+length of each supporting pole at the spacing you set (600 mm by default,
+minimum two per pole) and appear in the fittings list like any other part.
+
+Click a panel to change its material or delete it. If the opening is not flat
+enough to take a rigid sheet, the panel says so rather than pretending.
+
+> **Sheet prices are ours, not the supplier's.** Pipe Dream does not sell sheet,
+> so the £/m² figures are placeholders to make a panel cost *something*. Every
+> one is flagged as estimated in the BOM. Set your real rates in **Setup →
+> Panels** before quoting a client.
 
 ### Angles
 

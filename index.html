@@ -286,6 +286,7 @@
       <label class="pw-chk"><input type="checkbox" id="pwStretch" checked> Stretch structure</label>
       <button class="pw-btn" id="pwFlip" title="Grow from the other end">⇄ Flip</button>
       <button class="pw-btn" id="pwDup" title="Continue this pole (Shift+D)">↗ Continue</button>
+      <button class="pw-btn" id="pwPanel" title="Fill this opening with a sheet (P)">▦ Panel</button>
     </div>
     <label class="pw-chk pw-lock" title="Hold Shift to invert while dragging">
       <input type="checkbox" id="pwLock" checked> Lock to fitting angles
@@ -373,6 +374,21 @@
       <input type="number" id="wallNum" min="1" max="6" step="0.1"></label>
     <p class="hint">Wall thickness is not published on the pipe page; 3.2&nbsp;mm is the
       usual spec for 26.9&nbsp;mm key clamp tube. It affects the weight estimate only.</p>
+
+    <h3>Panels</h3>
+    <p class="hint" style="margin-top:0">Select the poles framing an opening, then
+      <b>▦ Panel</b> in the resizer (or <kbd>P</kbd>) to fill it with a sheet bolted on
+      with Double Fixing Pads.</p>
+    <label class="fld"><span>Sheet material</span>
+      <select id="sheetSel"></select></label>
+    <div class="row">
+      <label class="fld"><span>Rate &pound;/m&sup2;</span>
+        <input type="number" id="sheetRate" min="0" max="999" step="0.5"></label>
+      <label class="fld"><span>Fixing pad spacing</span>
+        <input type="number" id="padSpace" min="150" max="2000" step="50"></label>
+    </div>
+    <p class="warn">Sheet rates are placeholders of ours, not supplier prices —
+      Pipe Dream does not sell sheet. Set your real &pound;/m&sup2; before quoting.</p>
 
     <h3>Tidy up</h3>
     <p class="hint" style="margin-top:0">Joins poles that were left sitting near each
@@ -2006,7 +2022,10 @@ const FITTINGS = [
     url: 'https://pipedreamfittings.com/product/saddle-clamp-27mm-black-key-clamp-fitting/' },
   { id: 'singleFixingPad', sku: 'KCBSFP-27', type: '6080Z55', name: 'Single Fixing Pad', price: 1.94, weight: 0.15, role: 'accessory', ends: 0,
     url: 'https://pipedreamfittings.com/product/single-fixing-pad-27mm-black-key-clamp-fitting/' },
-  { id: 'doubleFixingPad', sku: 'KCBDFP-27', type: '6080Z56', name: 'Double Fixing Pad', price: 1.99, weight: 0.18, role: 'accessory', ends: 0,
+  // 6080Z56B data sheet, 26,9 mm row: a=35 pad depth, b=128 across the ears,
+  // c=94 overall height, two 10 mm fixing holes, 1/4" BSP grub screw.
+  { id: 'doubleFixingPad', sku: 'KCBDFP-27', type: '6080Z56B', name: 'Double Fixing Pad', price: 1.99, weight: 0.30, role: 'accessory', ends: 0,
+    sheet: { a: 35, b: 128, c: 94, hole: 10, bsp: '1/4"' },
     url: 'https://pipedreamfittings.com/product/double-fixing-pad-27mm-black-key-clamp-fitting/' },
   { id: 'gateEye', sku: 'KCBGE-27', type: '6080Z62', name: 'Gate Eye', price: 3.74, weight: 0.25, role: 'accessory', ends: 0,
     url: 'https://pipedreamfittings.com/product/gate-eye-27mm-black-key-clamp-fitting/' },
@@ -2027,7 +2046,28 @@ const FITTINGS = [
     url: 'https://pipedreamfittings.com/product/touch-up-spray-paint-ral-9005-black/' }
 ];
 
-const CATALOGUE = { TUBE, G, FITTINGS, scrapedOn: '2026-08-25', vatRate: 0.20 };
+/* ============================================================================
+   SHEET MATERIALS for infill panels, bolted on with Double Fixing Pads.
+
+   NOT from Pipe Dream — they do not sell sheet. These are ONYVA's own
+   placeholder rates so a panel carries a cost at all; every one is marked
+   estimated and is meant to be replaced with your actual supplier price.
+   Edit the £/m² in Setup, or change the numbers here.
+   ==========================================================================*/
+const SHEETS = [
+  { id: 'ply12',   name: 'Plywood 12 mm',            thickness: 12, perM2: 28.00, density: 650,  colour: 0xb08d57, estimated: true },
+  { id: 'ply18',   name: 'Plywood 18 mm',            thickness: 18, perM2: 39.00, density: 650,  colour: 0xa07f4c, estimated: true },
+  { id: 'acr6',    name: 'Acrylic 6 mm (clear)',     thickness: 6,  perM2: 62.00, density: 1190, colour: 0x9fd8e8, estimated: true, opacity: 0.34 },
+  { id: 'acr6opal',name: 'Acrylic 6 mm (opal)',      thickness: 6,  perM2: 68.00, density: 1190, colour: 0xe8ecef, estimated: true, opacity: 0.72 },
+  { id: 'dibond3', name: 'Dibond 3 mm (composite)',  thickness: 3,  perM2: 45.00, density: 1500, colour: 0xd7dade, estimated: true },
+  { id: 'ali2',    name: 'Aluminium 2 mm',           thickness: 2,  perM2: 58.00, density: 2700, colour: 0xc8ccd2, estimated: true },
+  { id: 'correx4', name: 'Correx 4 mm',              thickness: 4,  perM2: 9.50,  density: 650,  colour: 0xdfe3e7, estimated: true }
+];
+
+// How far apart to space fixing pads along a pole the panel bolts to.
+const PAD_SPACING = 600;   // mm
+
+const CATALOGUE = { TUBE, G, FITTINGS, SHEETS, PAD_SPACING, scrapedOn: '2026-08-25', vatRate: 0.20 };
 if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
 
 </script>
@@ -2334,7 +2374,68 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     return mesh;
   }
 
-  global.KCModels = { buildFitting, buildPipe, materials, aim, socketGeom, plateMesh };
+  /**
+   * A flat sheet filling an opening, drawn from the ring the engine worked out,
+   * plus the Double Fixing Pads that bolt it to the frame.
+   * 6080Z56B: 128 mm across the ears, 35 mm deep, 94 mm tall, 10 mm holes.
+   */
+  function buildPanel(p, opts) {
+    const o = opts || {};
+    const grp = new THREE.Group();
+    const mat = p.material || {};
+    const sheetMat = new THREE.MeshStandardMaterial({
+      color: o.highlight ? 0x4da3ff : (mat.colour || 0xb0b6bd),
+      roughness: 0.72, metalness: 0.05,
+      transparent: mat.opacity !== undefined,
+      opacity: mat.opacity !== undefined ? mat.opacity : 1,
+      side: THREE.DoubleSide
+    });
+
+    // build the sheet in the panel's own plane, then place it
+    const n = p.normal.clone().normalize();
+    const u = p.ring[1].clone().sub(p.ring[0]).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    const shape = new THREE.Shape(p.ring.map((q) => {
+      const d = q.clone().sub(p.centre);
+      return new THREE.Vector2(d.dot(u), d.dot(v));
+    }));
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: p.thickness || 12, bevelEnabled: false
+    });
+    geo.translate(0, 0, -(p.thickness || 12) / 2);
+    const mesh = new THREE.Mesh(geo, sheetMat);
+    const m = new THREE.Matrix4().makeBasis(u, v, n);
+    mesh.quaternion.setFromRotationMatrix(m);
+    mesh.position.copy(p.centre);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    grp.add(mesh);
+
+    // the pads
+    const pad = new THREE.MeshStandardMaterial({
+      color: 0x2b2f34, roughness: 0.45, metalness: 0.55
+    });
+    (p.padPoints || []).forEach((pp) => {
+      const g = new THREE.Group();
+      // saddle round the tube
+      const collar = new THREE.Mesh(
+        new THREE.CylinderGeometry(19, 19, 35, 20, 1, true), pad);
+      collar.rotation.z = Math.PI / 2;
+      g.add(collar);
+      // the flat ears, 128 mm tip to tip
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(35, 8, 128), pad);
+      plate.position.y = -22;
+      g.add(plate);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), pp.dir);
+      g.position.copy(pp.pos);
+      grp.add(g);
+    });
+
+    grp.userData.pick = { type: 'panel', id: p.id };
+    return grp;
+  }
+
+  global.KCModels = {
+    buildPanel, buildFitting, buildPipe, materials, aim, socketGeom, plateMesh };
 })(window);
 
 </script>
@@ -2548,6 +2649,137 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       out.push({ dir: [d.x, d.y, d.z], reach: s.reach, kind: 'socket', swivel: true });
     });
     return out;
+  }
+
+  /* ---- infill panels ----------------------------------------------------
+     A panel is a flat sheet filling an opening in the frame, bolted to the
+     poles around it with Double Fixing Pads. It is stored as the poles it
+     hangs on; the outline is worked out from their joints, so the panel
+     follows the frame when the frame moves.                              */
+
+  const SHEET = (id) => (global.CATALOGUE.SHEETS || []).find((s) => s.id === id)
+    || (global.CATALOGUE.SHEETS || [])[0];
+
+  /** Best-fit plane through a set of points: centroid plus a normal. */
+  function fitPlane(pts) {
+    const c = new THREE.Vector3();
+    pts.forEach((p) => c.add(p));
+    c.multiplyScalar(1 / pts.length);
+    // widest spread gives u; the point furthest off that line gives v
+    let u = null, best = 0;
+    pts.forEach((p) => {
+      const d = p.clone().sub(c); const L = d.length();
+      if (L > best) { best = L; u = d.clone().normalize(); }
+    });
+    if (!u) return null;
+    let v = null; best = 0;
+    pts.forEach((p) => {
+      const d = p.clone().sub(c);
+      const perp = d.clone().sub(u.clone().multiplyScalar(d.dot(u)));
+      if (perp.length() > best) { best = perp.length(); v = perp.clone().normalize(); }
+    });
+    if (!v) return null;
+    const n = new THREE.Vector3().crossVectors(u, v).normalize();
+    return { centre: c, u, v: new THREE.Vector3().crossVectors(n, u).normalize(), normal: n };
+  }
+
+  /** Convex hull of 2D points, counter-clockwise (monotone chain). */
+  function hull2d(pts) {
+    const p = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower = [];
+    for (const q of p) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+      lower.push(q);
+    }
+    const upper = [];
+    for (let i = p.length - 1; i >= 0; i--) {
+      const q = p[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+      upper.push(q);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  }
+
+  /**
+   * Work out a panel's outline, area and how many fixing pads it needs.
+   * Returns null if the poles it names have gone.
+   */
+  function solvePanel(panel, state) {
+    const byId = new Map(state.nodes.map((n) => [n.id, n]));
+    const edges = panel.edges
+      .map((id) => state.edges.find((e) => e.id === id))
+      .filter(Boolean);
+    if (edges.length < 2) return null;
+
+    const ids = new Set();
+    edges.forEach((e) => { ids.add(e.a); ids.add(e.b); });
+    const pts = Array.from(ids).map((id) => {
+      const n = byId.get(id);
+      return n ? new THREE.Vector3(n.p[0], n.p[1], n.p[2]) : null;
+    }).filter(Boolean);
+    if (pts.length < 3) return null;
+
+    const pl = fitPlane(pts);
+    if (!pl) return null;
+
+    // how far the poles stray from that plane — a warped opening cannot take
+    // a flat sheet, and it is better to say so than to draw a lie
+    let flatness = 0;
+    pts.forEach((p) => {
+      flatness = Math.max(flatness, Math.abs(p.clone().sub(pl.centre).dot(pl.normal)));
+    });
+
+    const flat = pts.map((p) => {
+      const d = p.clone().sub(pl.centre);
+      return { x: d.dot(pl.u), y: d.dot(pl.v) };
+    });
+    const ring2 = hull2d(flat);
+    if (ring2.length < 3) return null;
+
+    let area2 = 0;
+    for (let i = 0; i < ring2.length; i++) {
+      const a = ring2[i], b = ring2[(i + 1) % ring2.length];
+      area2 += a.x * b.y - b.x * a.y;
+    }
+    const areaMm2 = Math.abs(area2) / 2;
+
+    const ring = ring2.map((q) => pl.centre.clone()
+      .add(pl.u.clone().multiplyScalar(q.x))
+      .add(pl.v.clone().multiplyScalar(q.y)));
+
+    // pads spaced along every pole the sheet bolts to, minimum two each
+    const spacing = state.settings.padSpacing || global.CATALOGUE.PAD_SPACING || 600;
+    let pads = 0;
+    const padPoints = [];
+    edges.forEach((e) => {
+      const a = byId.get(e.a), b = byId.get(e.b);
+      if (!a || !b) return;
+      const ap = new THREE.Vector3(a.p[0], a.p[1], a.p[2]);
+      const bp = new THREE.Vector3(b.p[0], b.p[1], b.p[2]);
+      const len = ap.distanceTo(bp);
+      const n = Math.max(2, Math.round(len / spacing) + 1);
+      pads += n;
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;           // keep them clear of the fittings
+        padPoints.push({ pos: ap.clone().lerp(bp, t), dir: bp.clone().sub(ap).normalize() });
+      }
+    });
+
+    const mat = SHEET(panel.material);
+    return {
+      id: panel.id, ring, normal: pl.normal, centre: pl.centre,
+      areaM2: areaMm2 / 1e6, pads, padPoints, material: mat,
+      thickness: mat ? mat.thickness : 12,
+      flatness,
+      warn: flatness > 5 ? 'Opening is not flat — a rigid sheet will not sit in it' : null
+    };
+  }
+
+  function solvePanels(state) {
+    return (state.panels || []).map((p) => solvePanel(p, state)).filter(Boolean);
   }
 
   /* ---- main solve ----------------------------------------------------- */
@@ -2853,15 +3085,39 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
         }, 0)
       : plan.cost;
 
-    const sub = fitCost + pipeCost;
+    // panels, and the fixing pads that hold them on
+    const panels = solvePanels(state);
+    const panelRows = [];
+    let panelCost = 0, panelWeight = 0, padCount = 0;
+    panels.forEach((p) => {
+      if (!p.material) return;
+      padCount += p.pads;
+      const cost = p.areaM2 * p.material.perM2;
+      panelCost += cost;
+      panelWeight += p.areaM2 * (p.material.thickness / 1000) * p.material.density;
+      panelRows.push({
+        name: p.material.name, areaM2: p.areaM2, cost,
+        estimated: !!p.material.estimated, pads: p.pads, warn: p.warn
+      });
+    });
+    if (padCount) add(byId('doubleFixingPad'), padCount);
+
+    // recount fittings now the pads are in
+    const fitRows2 = Object.values(fittings)
+      .sort((a, b) => b.qty * b.fit.price - a.qty * a.fit.price);
+    const fitCost2 = fitRows2.reduce((t, r) => t + r.qty * r.fit.price, 0);
+    const fitWeight2 = fitRows2.reduce((t, r) => t + r.qty * (r.fit.weight || 0), 0);
+
+    const sub = fitCost2 + pipeCost + panelCost;
     const vat = settings.vat ? sub * global.CATALOGUE.vatRate : 0;
 
     return {
-      fitRows, fitCost, fitWeight, sleevesNeeded,
+      fitRows: fitRows2, fitCost: fitCost2, fitWeight: fitWeight2, sleevesNeeded,
       cuts, plan, pipeCost, totalPipeMm,
       pipeWeight: (totalPipeMm / 1000) * kgPerM,
+      panels, panelRows, panelCost, panelWeight, padCount,
       sub, vat, total: sub + vat,
-      weight: fitWeight + (totalPipeMm / 1000) * kgPerM
+      weight: fitWeight2 + (totalPipeMm / 1000) * kgPerM + panelWeight
     };
   }
 
@@ -2878,7 +3134,7 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
 
   global.KCEngine = {
     solveJoints, buildRuns, bom, planStock, classify, findOrientation, byId,
-    pipeStop, pickFitting, candidates
+    pipeStop, pickFitting, candidates, solvePanels, solvePanel
   };
 })(window);
 
@@ -2898,7 +3154,7 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
   const nid = () => 'n' + (uid++), eid = () => 'e' + (uid++);
 
   const state = {
-    nodes: [], edges: [], overrides: {}, extras: [],
+    nodes: [], edges: [], overrides: {}, extras: [], panels: [],
     settings: {
       grid: 100, insertDepth: 30, kerf: 2, wall: 3.2,
       vat: true, pipeMode: 'stock', showFittings: true, showGrid: true,
@@ -2907,18 +3163,20 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       lockAngles: true,       // only allow lengths every joint has a fitting for
       standardOnly: false,    // restrict poles to whole pipes as sold
       showAngles: true,       // draw joint angles on the model
-      showAllAngles: false    // ...including the 90s, which are usually obvious
+      showAllAngles: false,   // ...including the 90s, which are usually obvious
+      padSpacing: 600,        // mm between fixing pads along a pole
+      sheet: 'ply12'          // default panel material
     }
   };
   let history = [], future = [];
 
   function snapshot() {
-    return JSON.stringify({ nodes: state.nodes, edges: state.edges, overrides: state.overrides, extras: state.extras });
+    return JSON.stringify({ nodes: state.nodes, edges: state.edges, overrides: state.overrides, extras: state.extras, panels: state.panels });
   }
   function pushHistory() { history.push(snapshot()); if (history.length > 80) history.shift(); future = []; }
   function restore(s) {
     const d = JSON.parse(s);
-    state.nodes = d.nodes; state.edges = d.edges; state.overrides = d.overrides || {}; state.extras = d.extras || [];
+    state.nodes = d.nodes; state.edges = d.edges; state.overrides = d.overrides || {}; state.extras = d.extras || []; state.panels = d.panels || [];
     uid = 1; state.nodes.concat(state.edges).forEach((o) => {
       const n = parseInt(String(o.id).slice(1), 10); if (n >= uid) uid = n + 1;
     });
@@ -3576,6 +3834,49 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     return Math.atan2((ev.clientY - r.top) - py, (ev.clientX - r.left) - px);
   }
 
+  /**
+   * If the selected poles hang off the rest of the structure by exactly one
+   * joint, and that joint sits on a straight pole, the assembly can only really
+   * do one thing: ride up and down that pole. Constraining the move to the host
+   * pole's axis keeps the host straight, instead of dragging its joint sideways
+   * and bending it. Returns the axis to slide along, or null.
+   */
+  function slideConstraint(ids, selEdges) {
+    if (!selEdges || !selEdges.size) return null;
+    const anchors = [];
+    ids.forEach((id) => {
+      const ext = state.edges.filter((e) =>
+        (e.a === id || e.b === id) && !selEdges.has(e.id));
+      if (ext.length) anchors.push({ id, ext });
+    });
+    if (anchors.length !== 1) return null;          // free-floating, or pinned twice
+
+    const { id, ext } = anchors[0];
+    const n = state.nodes.find((x) => x.id === id);
+    if (!n) return null;
+    const o = new THREE.Vector3(n.p[0], n.p[1], n.p[2]);
+    const dirs = ext.map((e) => {
+      const other = state.nodes.find((x) => x.id === (e.a === id ? e.b : e.a));
+      return new THREE.Vector3(other.p[0], other.p[1], other.p[2]).sub(o).normalize();
+    });
+
+    let axis = null;
+    if (dirs.length === 1) {
+      axis = dirs[0].clone();                       // hanging off the end of a pole
+    } else {
+      for (let i = 0; i < dirs.length && !axis; i++) {
+        for (let j = i + 1; j < dirs.length; j++) {
+          if (dirs[i].dot(dirs[j]) < -0.98) { axis = dirs[i].clone(); break; }
+        }
+      }
+    }
+    if (!axis) return null;                         // a corner, not a straight pole
+    axis.normalize();
+    // point it "up the pole" so the readout reads the way the thing moves
+    if (axis.y < -0.01 || (Math.abs(axis.y) <= 0.01 && axis.x + axis.z < 0)) axis.negate();
+    return { nodeId: id, axis, origin: o };
+  }
+
   function beginTransform(kind) {
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
     // `ids` and `origin` are indexed against each other all through the
@@ -3599,6 +3900,13 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       startHit: null, startAngle: null,
       typed: '', fine: false, delta: 0
     };
+
+    // poles attached to the rest of the structure at one joint slide along it
+    if (kind === 'move' && selection && selection.type === 'run') {
+      const selEdges = new Set();
+      currentRuns().forEach((r) => r.edges.forEach((e) => selEdges.add(e)));
+      xform.slide = slideConstraint(ids, selEdges);
+    }
     controls.enabled = false;
     $('#viewport').style.cursor = kind === 'move' ? 'move' : 'crosshair';
     drawXformHud();
@@ -3876,6 +4184,46 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     toast(made.length > 1 ? made.length + ' poles copied — click to place' : 'Copied — click to place');
   }
 
+  /**
+   * Fill the opening framed by the selected poles with a sheet, bolted on with
+   * Double Fixing Pads. Stored as the poles it hangs on, so it follows the
+   * frame when the frame is moved or resized.
+   */
+  const currentSheet = () =>
+    window.CATALOGUE.SHEETS.find((s) => s.id === state.settings.sheet)
+    || window.CATALOGUE.SHEETS[0];
+
+  function addPanel() {
+    const runs = currentRuns();
+    if (runs.length < 2) { toast('Select the poles around an opening first'); return; }
+    const edges = [];
+    runs.forEach((r) => r.edges.forEach((e) => { if (edges.indexOf(e) === -1) edges.push(e); }));
+
+    const panel = {
+      id: 'pn' + (uid++),
+      edges,
+      material: state.settings.sheet
+    };
+    const solvedPanel = window.KCEngine.solvePanel(panel, state);
+    if (!solvedPanel) { toast('Those poles do not frame a flat opening'); return; }
+
+    pushHistory();
+    state.panels.push(panel);
+    selection = null;
+    rebuild();
+    const a = solvedPanel.areaM2.toFixed(2);
+    toast(solvedPanel.warn
+      ? 'Panel added — ' + solvedPanel.warn
+      : 'Panel added · ' + a + ' m² · ' + solvedPanel.pads + ' fixing pads');
+  }
+
+  function deletePanel(id) {
+    pushHistory();
+    state.panels = state.panels.filter((p) => p.id !== id);
+    selection = null;
+    rebuild();
+  }
+
   function resetXformNodes() {
     if (!xform) return;
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
@@ -3894,7 +4242,11 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       if (xform.typed !== '' && xform.axis) {
         delta = AXIS_VEC[xform.axis].clone().multiplyScalar(parseFloat(xform.typed) || 0);
       } else if (ev) {
-        const axis = xform.axis ? AXIS_VEC[xform.axis] : null;
+        // A slide is an axis constraint like any other, so read the mouse on a
+        // plane containing that axis — a horizontal plane can never yield
+        // vertical movement, which is most of what sliding up a post is.
+        const axis = xform.axis ? AXIS_VEC[xform.axis]
+                   : (xform.slide ? xform.slide.axis : null);
         let normal, hit;
         if (axis) {
           // a plane that contains the axis and faces the camera as much as it can
@@ -3915,6 +4267,15 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
                   Math.round(delta.y / step) * step,
                   Math.round(delta.z / step) * step);
       }
+      // Ride the host pole rather than dragging its joint off the line. An
+      // explicit axis lock (X/Y/Z) means the user wants free movement instead.
+      if (xform.slide && !xform.axis) {
+        const step = xform.fine ? 1 : state.settings.grid;
+        let t = delta.dot(xform.slide.axis);
+        t = Math.round(t / step) * step;
+        delta = xform.slide.axis.clone().multiplyScalar(t);
+      }
+
       xform.delta = delta;
       xform.ids.forEach((id, i) => {
         const n = byId.get(id); if (!n) return;
@@ -3951,13 +4312,16 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     // Look for something to join onto — but never when an exact value was
     // typed, since that is a deliberate measurement, not a gesture.
     xform.snap = null;
+    // Sliding is already anchored to a pole; letting the snap pull it off that
+    // line would defeat the constraint.
+    const sliding = !!(xform.slide && !xform.axis && xform.kind === 'move');
     // A copy starts life on top of its original, which would snap straight back
     // into it. Hold snapping off until it has been dragged clear.
     const clearOfOrigin = !xform.isDup ||
       (xform.kind === 'move' && xform.delta && xform.delta.length
         ? xform.delta.length() > Math.max(80, state.settings.grid * 0.75) * 1.25
         : false);
-    if (xform.typed === '' && !xform.fine && clearOfOrigin) {
+    if (xform.typed === '' && !xform.fine && clearOfOrigin && !sliding) {
       const s = findSnap(byId);
       if (s) {
         xform.snap = s;
@@ -3993,10 +4357,15 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     let main;
     if (xform.kind === 'move') {
       const d = xform.delta || new THREE.Vector3();
-      main = xform.typed !== ''
-        ? 'Move ' + axisName + ' ' + xform.typed + ' mm'
-        : 'Move ' + axisName + '  ' +
+      if (xform.slide && !xform.axis) {
+        const t = d.dot ? d.dot(xform.slide.axis) : 0;
+        main = 'Slide along pole  ' + (t > 0 ? '+' : '') + Math.round(t) + ' mm';
+      } else if (xform.typed !== '') {
+        main = 'Move ' + axisName + ' ' + xform.typed + ' mm';
+      } else {
+        main = 'Move ' + axisName + '  ' +
           [d.x, d.y, d.z].map((v) => (v > 0 ? '+' : '') + Math.round(v)).join(', ') + ' mm';
+      }
     } else {
       main = 'Rotate ' + axisName + '  ' +
         (xform.typed !== '' ? xform.typed : Math.round(xform.delta || 0)) + '°';
@@ -4027,7 +4396,9 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     $('#xformLabel').textContent = main;
     $('#xformHint').textContent = xform.snap
       ? 'release to join · Shift holds it off'
-      : 'X Y Z axis · type a number · Shift fine · click to confirm · Esc cancels';
+      : (xform.slide && !xform.axis)
+        ? 'held on the pole it hangs from · X Y Z to break away · Esc cancels'
+        : 'X Y Z axis · type a number · Shift fine · click to confirm · Esc cancels';
     el.classList.toggle('snapped', !!xform.snap);
     el.classList.add('on');
   }
@@ -4119,7 +4490,9 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
 
   function showWidget() {
     const w = $('#poleWidget');
-    if (xform) { w.classList.remove('on'); return; }   // out of the way while transforming
+    if (xform || (selection && selection.type === 'panel')) {
+      w.classList.remove('on'); return;                // out of the way
+    }
     const runs = currentRuns();
     const run = runs[0];
     if (!run) {
@@ -4590,6 +4963,13 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       });
     }
 
+    // infill panels, drawn from the poles they hang on
+    (bomData.panels || []).forEach((p) => {
+      const sel = selection && selection.type === 'panel' && selection.id === p.id;
+      const g = window.KCModels.buildPanel(p, { highlight: sel });
+      structureGroup.add(g);
+    });
+
     renderBom(bomData);
     updateHud();
     renderInspector();
@@ -4660,6 +5040,23 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       h += '<div class="subtot"><span>Pipe subtotal (buy to length)</span><b>' + money(b.pipeCost) + '</b></div>';
     }
 
+    if (b.panelRows && b.panelRows.length) {
+      h += '<h3>Panels</h3><table class="bomtable"><tbody>';
+      b.panelRows.forEach((p) => {
+        h += '<tr><td class="q">1&times;</td><td>' + p.name +
+          '<span class="sku">' + p.areaM2.toFixed(2) + ' m&sup2; · ' +
+          p.pads + ' fixing pads</span></td>' +
+          '<td class="n">' + money(p.cost) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      h += '<div class="subtot"><span>Panel subtotal</span><b>' + money(b.panelCost) + '</b></div>';
+      h += '<p class="warn">Sheet rates are ONYVA placeholders, not supplier prices — ' +
+        'Pipe Dream does not sell sheet. Set your own &pound;/m&sup2; in Setup before quoting.</p>';
+      b.panelRows.filter((p) => p.warn).forEach((p) => {
+        h += '<p class="warn">' + p.warn + '</p>';
+      });
+    }
+
     h += '<div class="totals">' +
       '<div><span>Subtotal (ex VAT)</span><b>' + money(b.sub) + '</b></div>' +
       (state.settings.vat ? '<div><span>VAT @ 20%</span><b>' + money(b.vat) + '</b></div>' : '') +
@@ -4676,6 +5073,33 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
   function renderInspector() {
     const box = $('#inspector');
     if (!selection) { box.innerHTML = '<p class="empty">Select a pipe or a joint to inspect it.</p>'; return; }
+
+    if (selection.type === 'panel') {
+      const stored = state.panels.find((p) => p.id === selection.id);
+      const p = (solved.bomData.panels || []).find((x) => x.id === selection.id);
+      if (!stored || !p) { box.innerHTML = '<p class="empty">Panel no longer exists.</p>'; return; }
+      let h = '<h3>Panel</h3>';
+      h += '<p class="big">' + p.material.name + '</p>';
+      h += '<p class="hint">' + p.areaM2.toFixed(2) + ' m&sup2; · ' + p.thickness + ' mm · ' +
+        p.pads + ' Double Fixing Pads · ' + money(p.areaM2 * p.material.perM2) + ' ex VAT</p>';
+      if (p.warn) h += '<p class="warn">' + p.warn + '</p>';
+      if (p.material.estimated) {
+        h += '<p class="warn">&pound;' + p.material.perM2.toFixed(2) +
+          '/m&sup2; is a placeholder, not a supplier price. Set your own in Setup.</p>';
+      }
+      h += '<label class="fld"><span>Material</span><select id="panelMat">' +
+        window.CATALOGUE.SHEETS.map((s) => '<option value="' + s.id + '"' +
+          (s.id === stored.material ? ' selected' : '') + '>' + s.name + '</option>').join('') +
+        '</select></label>';
+      h += '<button class="btn danger" id="delPanel">Delete panel</button>';
+      box.innerHTML = h;
+      $('#panelMat').onchange = (e) => {
+        pushHistory(); stored.material = e.target.value; rebuild();
+      };
+      $('#delPanel').onclick = () => deletePanel(selection.id);
+      return;
+    }
+
     if (selection.type === 'node') {
       const j = solved.joints.get(selection.id);
       if (!j) { box.innerHTML = '<p class="empty">Joint has no fitting.</p>'; return; }
@@ -5014,6 +5438,9 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     $('#vatChk').checked = state.settings.vat;
     $('#fitChk').checked = state.settings.showFittings;
     $('#gridChk').checked = state.settings.showGrid;
+    if ($('#sheetSel')) $('#sheetSel').value = state.settings.sheet;
+    if ($('#sheetRate') && currentSheet()) $('#sheetRate').value = currentSheet().perM2;
+    if ($('#padSpace')) $('#padSpace').value = state.settings.padSpacing;
     $('#angChk').checked = state.settings.showAngles;
     $('#ang90Chk').checked = state.settings.showAllAngles;
     $('#pipeMode').value = state.settings.pipeMode;
@@ -5052,6 +5479,26 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     };
     $('#pwFlip').onclick = () => { flipEnd = !flipEnd; showWidget(); };
     $('#pwDup').onclick = duplicateRun;
+    $('#pwPanel').onclick = addPanel;
+
+    // panel settings
+    const sheetSel = $('#sheetSel');
+    sheetSel.innerHTML = window.CATALOGUE.SHEETS
+      .map((s) => '<option value="' + s.id + '">' + s.name + '</option>').join('');
+    sheetSel.onchange = (e) => {
+      state.settings.sheet = e.target.value;
+      $('#sheetRate').value = currentSheet().perM2;
+      rebuild();
+    };
+    $('#sheetRate').onchange = (e) => {
+      const s = currentSheet();
+      if (s) { s.perM2 = Math.max(0, +e.target.value || 0); s.estimated = false; }
+      rebuild();
+    };
+    $('#padSpace').onchange = (e) => {
+      state.settings.padSpacing = Math.max(150, Math.min(2000, +e.target.value || 600));
+      rebuild();
+    };
 
     addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -5098,6 +5545,7 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
       if (e.key.toLowerCase() === 'g') beginTransform('move');
       if (e.key.toLowerCase() === 'r') beginTransform('rotate');
       if (e.key.toLowerCase() === 'd' && e.shiftKey) { e.preventDefault(); duplicateSelection(); }
+      if (e.key.toLowerCase() === 'p' && !e.shiftKey) addPanel();
       if (e.key === 'Delete' && selection) {
         const btn = $('#delNode') || $('#delRun'); if (btn) btn.click();
       }
@@ -5216,7 +5664,7 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     rebuild, frameAll, preset, exportCsv, exportJson,
     saveDesign, openDesign, autosave,
     beginTransform, applyTransform, endTransform, weldAll, duplicateRun,
-    duplicateSelection, drawAngleOverlays,
+    duplicateSelection, drawAngleOverlays, addPanel, deletePanel,
     get overlayCount() { return overlayGroup ? overlayGroup.children.length : 0; },
     handleAt, get hoverNode() { return hoverNode; },
     endRun, anchorPoint, get planeY() { return planeY; },

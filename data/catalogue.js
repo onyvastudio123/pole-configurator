@@ -489,7 +489,10 @@ const FITTINGS = [
     url: 'https://pipedreamfittings.com/product/saddle-clamp-27mm-black-key-clamp-fitting/' },
   { id: 'singleFixingPad', sku: 'KCBSFP-27', type: '6080Z55', name: 'Single Fixing Pad', price: 1.94, weight: 0.15, role: 'accessory', ends: 0,
     url: 'https://pipedreamfittings.com/product/single-fixing-pad-27mm-black-key-clamp-fitting/' },
-  { id: 'doubleFixingPad', sku: 'KCBDFP-27', type: '6080Z56', name: 'Double Fixing Pad', price: 1.99, weight: 0.18, role: 'accessory', ends: 0,
+  // 6080Z56B data sheet, 26,9 mm row: a=35 pad depth, b=128 across the ears,
+  // c=94 overall height, two 10 mm fixing holes, 1/4" BSP grub screw.
+  { id: 'doubleFixingPad', sku: 'KCBDFP-27', type: '6080Z56B', name: 'Double Fixing Pad', price: 1.99, weight: 0.30, role: 'accessory', ends: 0,
+    sheet: { a: 35, b: 128, c: 94, hole: 10, bsp: '1/4"' },
     url: 'https://pipedreamfittings.com/product/double-fixing-pad-27mm-black-key-clamp-fitting/' },
   { id: 'gateEye', sku: 'KCBGE-27', type: '6080Z62', name: 'Gate Eye', price: 3.74, weight: 0.25, role: 'accessory', ends: 0,
     url: 'https://pipedreamfittings.com/product/gate-eye-27mm-black-key-clamp-fitting/' },
@@ -510,5 +513,26 @@ const FITTINGS = [
     url: 'https://pipedreamfittings.com/product/touch-up-spray-paint-ral-9005-black/' }
 ];
 
-const CATALOGUE = { TUBE, G, FITTINGS, scrapedOn: '2026-08-25', vatRate: 0.20 };
+/* ============================================================================
+   SHEET MATERIALS for infill panels, bolted on with Double Fixing Pads.
+
+   NOT from Pipe Dream — they do not sell sheet. These are ONYVA's own
+   placeholder rates so a panel carries a cost at all; every one is marked
+   estimated and is meant to be replaced with your actual supplier price.
+   Edit the £/m² in Setup, or change the numbers here.
+   ==========================================================================*/
+const SHEETS = [
+  { id: 'ply12',   name: 'Plywood 12 mm',            thickness: 12, perM2: 28.00, density: 650,  colour: 0xb08d57, estimated: true },
+  { id: 'ply18',   name: 'Plywood 18 mm',            thickness: 18, perM2: 39.00, density: 650,  colour: 0xa07f4c, estimated: true },
+  { id: 'acr6',    name: 'Acrylic 6 mm (clear)',     thickness: 6,  perM2: 62.00, density: 1190, colour: 0x9fd8e8, estimated: true, opacity: 0.34 },
+  { id: 'acr6opal',name: 'Acrylic 6 mm (opal)',      thickness: 6,  perM2: 68.00, density: 1190, colour: 0xe8ecef, estimated: true, opacity: 0.72 },
+  { id: 'dibond3', name: 'Dibond 3 mm (composite)',  thickness: 3,  perM2: 45.00, density: 1500, colour: 0xd7dade, estimated: true },
+  { id: 'ali2',    name: 'Aluminium 2 mm',           thickness: 2,  perM2: 58.00, density: 2700, colour: 0xc8ccd2, estimated: true },
+  { id: 'correx4', name: 'Correx 4 mm',              thickness: 4,  perM2: 9.50,  density: 650,  colour: 0xdfe3e7, estimated: true }
+];
+
+// How far apart to space fixing pads along a pole the panel bolts to.
+const PAD_SPACING = 600;   // mm
+
+const CATALOGUE = { TUBE, G, FITTINGS, SHEETS, PAD_SPACING, scrapedOn: '2026-08-25', vatRate: 0.20 };
 if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;

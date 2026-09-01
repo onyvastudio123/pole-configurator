@@ -209,6 +209,137 @@
     return out;
   }
 
+  /* ---- infill panels ----------------------------------------------------
+     A panel is a flat sheet filling an opening in the frame, bolted to the
+     poles around it with Double Fixing Pads. It is stored as the poles it
+     hangs on; the outline is worked out from their joints, so the panel
+     follows the frame when the frame moves.                              */
+
+  const SHEET = (id) => (global.CATALOGUE.SHEETS || []).find((s) => s.id === id)
+    || (global.CATALOGUE.SHEETS || [])[0];
+
+  /** Best-fit plane through a set of points: centroid plus a normal. */
+  function fitPlane(pts) {
+    const c = new THREE.Vector3();
+    pts.forEach((p) => c.add(p));
+    c.multiplyScalar(1 / pts.length);
+    // widest spread gives u; the point furthest off that line gives v
+    let u = null, best = 0;
+    pts.forEach((p) => {
+      const d = p.clone().sub(c); const L = d.length();
+      if (L > best) { best = L; u = d.clone().normalize(); }
+    });
+    if (!u) return null;
+    let v = null; best = 0;
+    pts.forEach((p) => {
+      const d = p.clone().sub(c);
+      const perp = d.clone().sub(u.clone().multiplyScalar(d.dot(u)));
+      if (perp.length() > best) { best = perp.length(); v = perp.clone().normalize(); }
+    });
+    if (!v) return null;
+    const n = new THREE.Vector3().crossVectors(u, v).normalize();
+    return { centre: c, u, v: new THREE.Vector3().crossVectors(n, u).normalize(), normal: n };
+  }
+
+  /** Convex hull of 2D points, counter-clockwise (monotone chain). */
+  function hull2d(pts) {
+    const p = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower = [];
+    for (const q of p) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+      lower.push(q);
+    }
+    const upper = [];
+    for (let i = p.length - 1; i >= 0; i--) {
+      const q = p[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+      upper.push(q);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  }
+
+  /**
+   * Work out a panel's outline, area and how many fixing pads it needs.
+   * Returns null if the poles it names have gone.
+   */
+  function solvePanel(panel, state) {
+    const byId = new Map(state.nodes.map((n) => [n.id, n]));
+    const edges = panel.edges
+      .map((id) => state.edges.find((e) => e.id === id))
+      .filter(Boolean);
+    if (edges.length < 2) return null;
+
+    const ids = new Set();
+    edges.forEach((e) => { ids.add(e.a); ids.add(e.b); });
+    const pts = Array.from(ids).map((id) => {
+      const n = byId.get(id);
+      return n ? new THREE.Vector3(n.p[0], n.p[1], n.p[2]) : null;
+    }).filter(Boolean);
+    if (pts.length < 3) return null;
+
+    const pl = fitPlane(pts);
+    if (!pl) return null;
+
+    // how far the poles stray from that plane — a warped opening cannot take
+    // a flat sheet, and it is better to say so than to draw a lie
+    let flatness = 0;
+    pts.forEach((p) => {
+      flatness = Math.max(flatness, Math.abs(p.clone().sub(pl.centre).dot(pl.normal)));
+    });
+
+    const flat = pts.map((p) => {
+      const d = p.clone().sub(pl.centre);
+      return { x: d.dot(pl.u), y: d.dot(pl.v) };
+    });
+    const ring2 = hull2d(flat);
+    if (ring2.length < 3) return null;
+
+    let area2 = 0;
+    for (let i = 0; i < ring2.length; i++) {
+      const a = ring2[i], b = ring2[(i + 1) % ring2.length];
+      area2 += a.x * b.y - b.x * a.y;
+    }
+    const areaMm2 = Math.abs(area2) / 2;
+
+    const ring = ring2.map((q) => pl.centre.clone()
+      .add(pl.u.clone().multiplyScalar(q.x))
+      .add(pl.v.clone().multiplyScalar(q.y)));
+
+    // pads spaced along every pole the sheet bolts to, minimum two each
+    const spacing = state.settings.padSpacing || global.CATALOGUE.PAD_SPACING || 600;
+    let pads = 0;
+    const padPoints = [];
+    edges.forEach((e) => {
+      const a = byId.get(e.a), b = byId.get(e.b);
+      if (!a || !b) return;
+      const ap = new THREE.Vector3(a.p[0], a.p[1], a.p[2]);
+      const bp = new THREE.Vector3(b.p[0], b.p[1], b.p[2]);
+      const len = ap.distanceTo(bp);
+      const n = Math.max(2, Math.round(len / spacing) + 1);
+      pads += n;
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;           // keep them clear of the fittings
+        padPoints.push({ pos: ap.clone().lerp(bp, t), dir: bp.clone().sub(ap).normalize() });
+      }
+    });
+
+    const mat = SHEET(panel.material);
+    return {
+      id: panel.id, ring, normal: pl.normal, centre: pl.centre,
+      areaM2: areaMm2 / 1e6, pads, padPoints, material: mat,
+      thickness: mat ? mat.thickness : 12,
+      flatness,
+      warn: flatness > 5 ? 'Opening is not flat — a rigid sheet will not sit in it' : null
+    };
+  }
+
+  function solvePanels(state) {
+    return (state.panels || []).map((p) => solvePanel(p, state)).filter(Boolean);
+  }
+
   /* ---- main solve ----------------------------------------------------- */
 
   function byId(id) { return global.CATALOGUE.FITTINGS.find((f) => f.id === id); }
@@ -512,15 +643,39 @@
         }, 0)
       : plan.cost;
 
-    const sub = fitCost + pipeCost;
+    // panels, and the fixing pads that hold them on
+    const panels = solvePanels(state);
+    const panelRows = [];
+    let panelCost = 0, panelWeight = 0, padCount = 0;
+    panels.forEach((p) => {
+      if (!p.material) return;
+      padCount += p.pads;
+      const cost = p.areaM2 * p.material.perM2;
+      panelCost += cost;
+      panelWeight += p.areaM2 * (p.material.thickness / 1000) * p.material.density;
+      panelRows.push({
+        name: p.material.name, areaM2: p.areaM2, cost,
+        estimated: !!p.material.estimated, pads: p.pads, warn: p.warn
+      });
+    });
+    if (padCount) add(byId('doubleFixingPad'), padCount);
+
+    // recount fittings now the pads are in
+    const fitRows2 = Object.values(fittings)
+      .sort((a, b) => b.qty * b.fit.price - a.qty * a.fit.price);
+    const fitCost2 = fitRows2.reduce((t, r) => t + r.qty * r.fit.price, 0);
+    const fitWeight2 = fitRows2.reduce((t, r) => t + r.qty * (r.fit.weight || 0), 0);
+
+    const sub = fitCost2 + pipeCost + panelCost;
     const vat = settings.vat ? sub * global.CATALOGUE.vatRate : 0;
 
     return {
-      fitRows, fitCost, fitWeight, sleevesNeeded,
+      fitRows: fitRows2, fitCost: fitCost2, fitWeight: fitWeight2, sleevesNeeded,
       cuts, plan, pipeCost, totalPipeMm,
       pipeWeight: (totalPipeMm / 1000) * kgPerM,
+      panels, panelRows, panelCost, panelWeight, padCount,
       sub, vat, total: sub + vat,
-      weight: fitWeight + (totalPipeMm / 1000) * kgPerM
+      weight: fitWeight2 + (totalPipeMm / 1000) * kgPerM + panelWeight
     };
   }
 
@@ -537,6 +692,6 @@
 
   global.KCEngine = {
     solveJoints, buildRuns, bom, planStock, classify, findOrientation, byId,
-    pipeStop, pickFitting, candidates
+    pipeStop, pickFitting, candidates, solvePanels, solvePanel
   };
 })(window);

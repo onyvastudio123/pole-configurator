@@ -286,6 +286,7 @@
       <label class="pw-chk"><input type="checkbox" id="pwStretch" checked> Stretch structure</label>
       <button class="pw-btn" id="pwFlip" title="Grow from the other end">⇄ Flip</button>
       <button class="pw-btn" id="pwDup" title="Continue this pole (Shift+D)">↗ Continue</button>
+      <button class="pw-btn" id="pwPanel" title="Fill this opening with a sheet (P)">▦ Panel</button>
     </div>
     <label class="pw-chk pw-lock" title="Hold Shift to invert while dragging">
       <input type="checkbox" id="pwLock" checked> Lock to fitting angles
@@ -373,6 +374,21 @@
       <input type="number" id="wallNum" min="1" max="6" step="0.1"></label>
     <p class="hint">Wall thickness is not published on the pipe page; 3.2&nbsp;mm is the
       usual spec for 26.9&nbsp;mm key clamp tube. It affects the weight estimate only.</p>
+
+    <h3>Panels</h3>
+    <p class="hint" style="margin-top:0">Select the poles framing an opening, then
+      <b>▦ Panel</b> in the resizer (or <kbd>P</kbd>) to fill it with a sheet bolted on
+      with Double Fixing Pads.</p>
+    <label class="fld"><span>Sheet material</span>
+      <select id="sheetSel"></select></label>
+    <div class="row">
+      <label class="fld"><span>Rate &pound;/m&sup2;</span>
+        <input type="number" id="sheetRate" min="0" max="999" step="0.5"></label>
+      <label class="fld"><span>Fixing pad spacing</span>
+        <input type="number" id="padSpace" min="150" max="2000" step="50"></label>
+    </div>
+    <p class="warn">Sheet rates are placeholders of ours, not supplier prices —
+      Pipe Dream does not sell sheet. Set your real &pound;/m&sup2; before quoting.</p>
 
     <h3>Tidy up</h3>
     <p class="hint" style="margin-top:0">Joins poles that were left sitting near each

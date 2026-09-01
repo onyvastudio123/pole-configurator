@@ -300,5 +300,66 @@
     return mesh;
   }
 
-  global.KCModels = { buildFitting, buildPipe, materials, aim, socketGeom, plateMesh };
+  /**
+   * A flat sheet filling an opening, drawn from the ring the engine worked out,
+   * plus the Double Fixing Pads that bolt it to the frame.
+   * 6080Z56B: 128 mm across the ears, 35 mm deep, 94 mm tall, 10 mm holes.
+   */
+  function buildPanel(p, opts) {
+    const o = opts || {};
+    const grp = new THREE.Group();
+    const mat = p.material || {};
+    const sheetMat = new THREE.MeshStandardMaterial({
+      color: o.highlight ? 0x4da3ff : (mat.colour || 0xb0b6bd),
+      roughness: 0.72, metalness: 0.05,
+      transparent: mat.opacity !== undefined,
+      opacity: mat.opacity !== undefined ? mat.opacity : 1,
+      side: THREE.DoubleSide
+    });
+
+    // build the sheet in the panel's own plane, then place it
+    const n = p.normal.clone().normalize();
+    const u = p.ring[1].clone().sub(p.ring[0]).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    const shape = new THREE.Shape(p.ring.map((q) => {
+      const d = q.clone().sub(p.centre);
+      return new THREE.Vector2(d.dot(u), d.dot(v));
+    }));
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: p.thickness || 12, bevelEnabled: false
+    });
+    geo.translate(0, 0, -(p.thickness || 12) / 2);
+    const mesh = new THREE.Mesh(geo, sheetMat);
+    const m = new THREE.Matrix4().makeBasis(u, v, n);
+    mesh.quaternion.setFromRotationMatrix(m);
+    mesh.position.copy(p.centre);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    grp.add(mesh);
+
+    // the pads
+    const pad = new THREE.MeshStandardMaterial({
+      color: 0x2b2f34, roughness: 0.45, metalness: 0.55
+    });
+    (p.padPoints || []).forEach((pp) => {
+      const g = new THREE.Group();
+      // saddle round the tube
+      const collar = new THREE.Mesh(
+        new THREE.CylinderGeometry(19, 19, 35, 20, 1, true), pad);
+      collar.rotation.z = Math.PI / 2;
+      g.add(collar);
+      // the flat ears, 128 mm tip to tip
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(35, 8, 128), pad);
+      plate.position.y = -22;
+      g.add(plate);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), pp.dir);
+      g.position.copy(pp.pos);
+      grp.add(g);
+    });
+
+    grp.userData.pick = { type: 'panel', id: p.id };
+    return grp;
+  }
+
+  global.KCModels = {
+    buildPanel, buildFitting, buildPipe, materials, aim, socketGeom, plateMesh };
 })(window);
