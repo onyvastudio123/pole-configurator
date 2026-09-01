@@ -1,0 +1,9 @@
+# Scraped working material: Pipe Dream's own datasheet scans and product photos.
+# Not needed to build or run — every dimension is transcribed into
+# data/catalogue.js — and not ours to republish. Kept local only.
+reference/
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+desktop.ini

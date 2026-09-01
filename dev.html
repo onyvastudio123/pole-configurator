@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ONYVA Studio · Pole System Configurator</title>
+<style>
+  :root{
+    --bg:#0e0f11; --panel:#16181c; --panel2:#1c1f24; --line:#2a2e35;
+    --ink:#e8eaed; --dim:#9aa1ab; --accent:#4da3ff; --warn:#ffb020; --danger:#ff6b6b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:grid; grid-template-columns:1fr 380px; grid-template-rows:58px 1fr;
+    grid-template-areas:"top top" "view side"; overflow:hidden;
+  }
+  header{
+    grid-area:top; display:flex; align-items:center; gap:14px; padding:0 16px;
+    background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .brand{
+    display:flex; align-items:center; color:#f8f9f9; flex:none;
+    padding-right:14px; margin-right:2px; border-right:1px solid var(--line);
+    height:30px; text-decoration:none;
+  }
+  .brand .logo{height:26px;width:auto;display:block}
+  header h1{
+    font-size:13px;margin:0;font-weight:650;letter-spacing:.055em;text-transform:uppercase;
+  }
+  header h1 small{
+    display:block;color:var(--dim);font-weight:400;font-size:10.5px;
+    letter-spacing:.02em;text-transform:none;margin-top:1px;
+  }
+  .grow{flex:1}
+  .btn{
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:7px; padding:6px 11px; font-size:13px; cursor:pointer;
+  }
+  .btn:hover{background:#262a31; border-color:#3a4049}
+  .btn.on{background:var(--accent); border-color:var(--accent); color:#04121f; font-weight:600}
+  .btn.danger{background:#2a1618;border-color:#4a2226;color:#ffb3b3;width:100%;margin-top:12px}
+  .btn.danger:hover{background:#3a1c1f}
+  .seg{display:flex;gap:4px}
+
+  #viewport{grid-area:view; position:relative; background:var(--bg)}
+  #viewport canvas{display:block}
+  #hud{
+    position:absolute; left:14px; bottom:14px; display:flex; gap:14px;
+    background:rgba(14,15,17,.82); border:1px solid var(--line); border-radius:8px;
+    padding:7px 12px; font-size:12px; color:var(--dim); backdrop-filter:blur(6px);
+  }
+  #hud b{color:var(--ink);font-weight:600}
+  #liveLen{
+    position:absolute; left:50%; top:18px; transform:translateX(-50%); display:none;
+    background:var(--accent); color:#04121f; font-weight:700; font-family:var(--mono);
+    padding:5px 12px; border-radius:7px; font-size:13px;
+  }
+  #legend{
+    position:absolute; right:14px; top:14px; background:rgba(14,15,17,.82);
+    border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+    font-size:11.5px; color:var(--dim); max-width:230px; backdrop-filter:blur(6px);
+  }
+  #legend b{color:var(--ink)}
+  kbd{
+    background:#23272e;border:1px solid #343a43;border-bottom-width:2px;border-radius:4px;
+    padding:0 5px;font:11px var(--mono);color:var(--ink)
+  }
+
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04121f;font-weight:650}
+  .btn.primary:hover{background:#66b1ff;border-color:#66b1ff}
+  .btn.primary.on{background:#0d5aa8;border-color:#0d5aa8;color:#eaf4ff}
+  .inline-fld select{
+    background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:inherit
+  }
+
+  #marquee{
+    position:absolute; display:none; z-index:4; pointer-events:none;
+    border:1px solid var(--accent); background:rgba(77,163,255,.13); border-radius:2px;
+  }
+
+  /* project chip + save state */
+  .seg.proj{align-items:center;gap:5px;padding-right:9px;margin-right:3px;
+            border-right:1px solid var(--line)}
+  .chip{
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+    border-radius:7px;padding:6px 9px;font-size:12.5px;font-family:inherit;cursor:pointer;
+    max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+  }
+  .chip:hover{color:var(--ink);border-color:#3a4049}
+  .chip.dirty::after{content:'•';color:var(--warn);margin-left:5px;font-size:15px;line-height:0}
+
+  #restoreBar{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;
+    align-items:center;gap:10px;background:rgba(22,24,28,.96);border:1px solid #39404a;
+    border-radius:9px;padding:8px 10px 8px 14px;font-size:12.5px;color:var(--ink);
+    box-shadow:0 10px 30px rgba(0,0,0,.5);backdrop-filter:blur(8px);z-index:6
+  }
+  #restoreBar.on{display:flex}
+  .rb-btn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+          border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .rb-btn:hover{color:var(--ink)}
+  .rb-x{background:none;border:0;color:var(--dim);font-size:17px;line-height:1;
+        cursor:pointer;padding:0 2px}
+  .rb-x:hover{color:var(--ink)}
+
+  #toast{
+    position:absolute;left:50%;bottom:70px;transform:translateX(-50%) translateY(8px);
+    background:rgba(22,24,28,.97);border:1px solid #39404a;border-radius:8px;
+    padding:8px 14px;font-size:12.5px;color:var(--ink);opacity:0;pointer-events:none;
+    transition:opacity .18s,transform .18s;z-index:7;box-shadow:0 8px 24px rgba(0,0,0,.5)
+  }
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* modal move / rotate readout */
+  #xform{
+    position:absolute;left:50%;top:18px;transform:translateX(-50%);display:none;
+    align-items:baseline;gap:10px;background:var(--accent);color:#04121f;
+    padding:6px 14px;border-radius:7px;font-size:13px;z-index:8;
+    box-shadow:0 6px 20px rgba(0,0,0,.4)
+  }
+  #xform.on{display:flex}
+  #xform.snapped{background:#54e08a}
+  #xform b{font-family:var(--mono);font-weight:700;letter-spacing:.01em}
+  #xform span{font-size:11px;opacity:.72}
+
+  /* floating pole resizer */
+  #poleWidget{
+    position:absolute; display:none; width:236px; z-index:5;
+    background:rgba(22,24,28,.96); border:1px solid #39404a; border-radius:10px;
+    padding:10px 12px 11px; box-shadow:0 12px 34px rgba(0,0,0,.55);
+    backdrop-filter:blur(8px);
+  }
+  #poleWidget.on{display:block}
+  .pw-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  #pwTitle{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:650}
+  .pw-x{background:none;border:0;color:var(--dim);font-size:17px;line-height:1;cursor:pointer;padding:0 2px}
+  .pw-x:hover{color:var(--ink)}
+  .pw-len{display:flex;align-items:baseline;gap:6px;margin-bottom:8px}
+  .pw-len input{
+    width:92px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:5px 7px;font:600 15px var(--mono);
+  }
+  .pw-len span{color:var(--dim);font-size:11px}
+  #pwSlider{width:100%;accent-color:var(--accent);margin:2px 0 8px}
+  .pw-stock{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px}
+  .pw-stock button{
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+    border-radius:5px;padding:3px 6px;font:11px var(--mono);cursor:pointer
+  }
+  .pw-stock button:hover{color:var(--ink);border-color:#48505b}
+  .pw-stock button.hit{background:#123a5c;border-color:var(--accent);color:#cfe6ff}
+  .pw-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .pw-chk{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);cursor:pointer}
+  .pw-chk input{accent-color:var(--accent);width:13px;height:13px}
+  .pw-btn{
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+    border-radius:6px;padding:4px 7px;font-size:11.5px;cursor:pointer;white-space:nowrap
+  }
+  .pw-btn:hover{color:var(--ink)}
+  .pw-lock{margin-top:7px;padding-top:7px;border-top:1px solid #2a2e35}
+  .pw-note{color:#6b7280;font-size:10.5px;margin-top:7px;line-height:1.35}
+  .pw-note b{color:var(--warn);font-weight:600}
+  .pw-note i{color:var(--accent);font-style:normal;font-weight:600}
+
+  aside{
+    grid-area:side; background:var(--panel); border-left:1px solid var(--line);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .tabs{display:flex;border-bottom:1px solid var(--line);flex:none}
+  .tab{
+    flex:1; background:none; border:0; color:var(--dim); padding:11px 4px;
+    font-size:12.5px; cursor:pointer; border-bottom:2px solid transparent;
+  }
+  .tab.on{color:var(--ink);border-bottom-color:var(--accent)}
+  .tabpane{display:none;overflow-y:auto;padding:14px;flex:1}
+  .tabpane.on{display:block}
+
+  .total{
+    flex:none; border-top:1px solid var(--line); padding:12px 14px;
+    display:flex; align-items:baseline; justify-content:space-between; background:var(--panel2);
+  }
+  .total b{font-size:24px;font-family:var(--mono);letter-spacing:-0.02em}
+  .total span{color:var(--dim);font-size:12px}
+
+  h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);
+     margin:18px 0 8px;font-weight:650}
+  h3:first-child{margin-top:0}
+  .bomtable{width:100%;border-collapse:collapse}
+  .bomtable td{padding:6px 4px;border-bottom:1px solid #1f2228;vertical-align:top;font-size:13px}
+  .bomtable td.q{width:34px;color:var(--dim);font-family:var(--mono);font-size:12px}
+  .bomtable td.n{text-align:right;font-family:var(--mono);white-space:nowrap;font-size:12.5px}
+  .bomtable a{color:var(--ink);text-decoration:none;border-bottom:1px solid #333}
+  .bomtable a:hover{color:var(--accent);border-color:var(--accent)}
+  .sku{display:block;color:#6b7280;font-size:10.5px;font-family:var(--mono);margin-top:2px}
+  .subtot{display:flex;justify-content:space-between;padding:9px 4px;font-size:13px;
+          border-top:1px solid var(--line);margin-top:2px}
+  .subtot b{font-family:var(--mono)}
+  .totals{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+  .totals div{display:flex;justify-content:space-between;padding:3px 4px;font-size:13px}
+  .totals b{font-family:var(--mono)}
+  .hint{color:var(--dim);font-size:11.5px;margin:8px 0}
+  .warn{color:var(--warn);font-size:11.5px;margin:8px 0;
+        background:#241d0d;border:1px solid #4a3a12;padding:7px 9px;border-radius:6px}
+  .empty{color:#5f6670;font-size:13px;text-align:center;padding:32px 10px}
+  .big{font-size:19px;font-weight:600;margin:4px 0}
+  .fld{display:block;margin:14px 0 6px;font-size:12px;color:var(--dim)}
+  .fld span{display:block;margin-bottom:5px}
+  .fld select,.fld input{
+    width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit
+  }
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .chk{display:flex;align-items:center;gap:8px;margin:9px 0;font-size:13px;cursor:pointer}
+  .chk input{accent-color:var(--accent);width:15px;height:15px}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .presets .btn{width:100%}
+  .filein{display:block;margin-top:8px;font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="#" title="ONYVA Studio"><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 985.74 497.46" fill="currentColor" role="img" aria-label="ONYVA Studio">
+  <g>
+    <path d="M726.79,149.93c4.38,13.06,7.79,28.3,14.52,40.91,3.23,6.04,7.9,11.96,11.86,17.56,7.53,10.62,14.8,21.17,23.72,30.64.61.64.71,1.95,1.22,2.47,1.57,1.57,6.4,2.78,8.71,4.85,3.07,2.75,2.02,6.09,3.23,9.03.49,1.19,3.44,3.98,4.29,5.1,1.69,2.23,2.69,4.21,4,6.37,1.94,3.19,8.91,10.61,11.9,14.41,10.35,13.17,21.35,26.12,31.92,39.19,1.44,1.78,3.46,3.2,4.44,5.74.51,1.3-2.29.16-2.75.59.65,1.63-1.56,7.51-2.56,8.45-.56.53-1.55.27-1.8.51-.38.36-.5,2.77-.93,3.03-.67.39-2.2-.75-2.85-.65-.76.12-1.14,2.43-5.01,2.06-2.86-.27-15.9-2.23-17.28-3.15-.46-.31-.6-1.07-.7-1.13-.63-.36-2.98.14-3.55-1.27,3.57-2.52,2.85-7.62-1.55-7.96-.13-.35.57-1.17.52-1.78-.22-2.61-6.27-7.97-8.03-10.12-2.24-2.73-4.17-5.82-6.42-8.31-9.82-10.87-18.24-24.31-28.61-34.99-.44-.45-.59-1.04-.72-1.63-2.54.22-4.54.64-6.95,1.41-16.55,5.26-35.4,8.57-51.4,16.8-8.48,4.36-15.69,10.47-25.55,12.39-4.4.86-7.68-.94-11.96-.76.79,2.01-.75,2.9-1.07,4.2-.54,2.18-3.4,17.63-4.76,18.79-1.53-.24-1.63,1.04-2.44,1.49-2.71,1.5-5.57,1.77-8.38,2.55-2.06.58-3.56,2.19-6.29,1.49-4.09-1.04-3.38-4.56-3.1-8.06l-1.1.46c-.18-2.71.72-11.44.72-14.11,0-8.49,3.24-16.58,5.86-24.35,7.4-21.95,16.71-44.55,22.45-67.15,3-11.8,5.23-24.1,8.81-35.68,1.28-4.14,5.79-13.04,6.28-16.59.39-2.8-1.08-4.71.79-8.33.47-.92,5.78-3.05,6.98-3.75,4.56-2.67,9.33-5.65,13.6-8.99,5.34-.72,18.15-2.95,19.84,4.6.29,1.29-.24,2.59.13,3.68ZM710.53,216.03c-.32-.43-1.16-.72-1.66-1.33-.53-.66-2.11-4.19-3.22-3.53l-6.39,22.27-9.86,26.76c.95.13,1.86.22,2.82.07,4.96-.76,11.42-4.25,15.88-5.61,10.17-3.09,19.34-4.94,29.34-8.53,1.29-.46,3.59-.39,5.08-1.29.27-.76-.14-.91-.42-1.39-.9-1.57-7.99-9.59-9.49-10.95-2.34-2.11-5.53-3.43-7.99-5.96-1.84-1.89-4.28-5.94-6.1-7.57-2.2-1.97-4.35-1.52-6.46.26-.15-.1-1.31-2.89-1.54-3.2Z"/>
+    <path d="M560.1,145.59c.16.26-.27.91-.23.96.13.21,2.65-.38,3.67-.14,3.9.93,3.54,5.04,2.98,8.08-2.21.88-3.9,3.46-5.41,4.63-1.55,1.2-4.14,1.84-4.88,2.28-.59.34-.26,1.83-.71,2.46-.85,1.2-7.99,5.43-9.92,7.14-9.8,8.69-20.61,22.61-29.39,32.69-11.84,13.59-34.88,38.99-37.93,56.65-.65,3.76.03,11.01-1.01,14.24-1.33,4.14-3.18,6.03-4.25,10.93-2.39,10.93-1.64,25.58-3.07,37.37-1.63,13.46-5.14,24.57-8.28,37.41-.48,1.95-.15,6.94-1.72,8.14-.66.51-1.63-.04-1.98.44-2.25,3.17-2.44,11.09-3.93,14.73-.38.91-3.84,5.74-4.96,7.72-.41.73-1.37,1.08-1.63,1.47-.09.14,1.69,2.02.47,3.15-1.59-1.52-6.69-.44-7.17,1.47-.23.89,1.72,3.45.64,4.01l-3.78-1.78c.29-.63,1.07-1.03,1.31-1.66.36-.94.77-5.55.58-6.4-.23-1.02-1.67-1.53-1.76-1.83-.19-.67,1.71-2.56,1.06-3.74-1.98-2.49-3.26.44-5.31.35-3.5-.15-4.1-2.32-5.14-2.75-.7-.28-2.19,1.3-3.1.34.11-1.58-.03-4.44-.55-5.85-1.07-2.94-2.55-4.01-2.73-8.06-.32-7.03,2.85-13.01,3.09-18.91.03-.75-1.08-5.22-1.07-6.43.08-12.75,7.13-26.68,9.76-39.24,2.52-12.02.6-24.39,3.28-36.1,1.33-5.83,3.8-11.37,5.7-16.82,1.49-4.27-.27-4.54-1.7-7.91-.64-1.5.5-2.97-2.29-4.99-1.58-1.09-2.37,3.32-2.59,3.4-1.84-1.04-1.57-2.7-2.18-3.91-4.03-7.94-7.17-14.53-10.59-21.83-1.42-3.03-3.62-5.03-3.93-8.75l.92.11,13.85,28.62c.9.78,3.79-1.45,3.61-1.99-2.31-1.35-3.03-4.87-4.17-7.23-8.22-16.95-12.8-33.01-18.88-50.96-1.3-3.85-1.3-7.9-5.54-9.86-1.49,1.73.37,2.11.68,3.55.28,1.31.58,4.85.42,6.13-.07.56-.19,2.11-1.08,1.51.54-4.08-2.36-8.05-3.66-11.88-3.94-11.56-7.22-23.18-10.83-34.86-1.16-3.77-2.92-7.68-3.71-12.07-.57-3.16-.41-9.4-1.38-12.04-.44-1.2-2.26-3.18-2.45-4.27-.2-1.13,1.07-3.61-.44-3.87-1.18.83-2.5,1.5-3.86.48l4.98-3.58-.88,1.89c4.12,1.85,3-3.02,7.41-3.59,3.37-.43,7.6-.23,10.61-2.27.9-.08,10.57,4.02,11.37,4.89.21.22,2.37,4.13,2.44,4.49.33,1.63-.83,6.37-.56,6.92,4.05,2.56,6.41,5.3,8.77,9.39,13.19,22.84,14.88,54.68,25.06,79.37,0,2.01,3.55,13.55,4.55,13.8l15.08-15.94c1,.23-.43,1.97-.72,2.32-.72.91-1.65,1.25-2.1,2.27,1.06.08,2.13-.47,2.97-1.08,5.01-3.62,9.96-10.67,14.49-15.06,1.01.33-.29,2.17-.62,2.62-2.13,2.91-6.31,5.73-8.46,8.83-.31.45-1.3,1.44.06,1.41,1.68-.04,3.73-4.13,4.88-5.15,2.58-2.3,7.82-4.96,10.58-7.98.75-.82.53-1.96.76-2.17.21-.2,3.15-.03,2.78-3.4l1.35.67,14.37-14.78c1.46-1.81,13-9.9,12.69-11.35l-2.91.6,1.02-2.05,3.32-.18-.57-1.57,5.29-1.47-1.49-1.03,1.83-1.1c-.24-.49-4.65-.25-4.31-2.02,2.82,1.56,4.37-.01,6.78-.73,2.4-.72,3.06,1,3.81-2.89,2.34-1.63,2.97,1.3,3.83,1.64.52.2,1.5-.65,1.76-.29.15.21-.52,3.49,3.3,2.22-.13-1.8.96-3.51,1.13-4.93.16-1.35-1.81-3.42.95-3.86,1.68.71,2.16,2.97,3.01,3.78,2.1,2,7.11,4.62,8.53,7.03Z"/>
+    <path d="M631.21,199.53c1.06.8,3.51,2.24,4.13,2.79.43.38,3.64,3.77,3.77,4.02.11.22.17.84-.22.78l-1.85-.94c-.68,1.3-.52,4.26,1.48,4.08.14-.01.42-1.45,2.27-1.16l.4,3.1,1.78-.6,2.29,4.21c-1.37,1.29-2.43,3.44-3.14,5.18-.24.58.3,1.26.21,1.41-.07.13-1.2.53-1.83,1.53-2.48,4-5.99,15.22-7.65,20.23-7.49,22.64-14.01,46.15-23.01,68.35-7.06,17.42-13.16,34.74-17.41,53.52-.33,1.44-2.11,3.54-.24,3.76.21,1.85-1.93,3.9-2.1,5.36-.07.61.47,1.35.37,1.9-.83,5.07-2.42,10.09-3.47,15.13-6.29,4.99-10.46,8.77-18.81,5.48-1.38-.54-4.82-3.06-6.08-4.02-20.42-15.53-24.87-40.3-32.94-63.1-4.11-11.62-8.53-22.85-12.81-33.63-2.92-7.36-6.57-14.16-7.98-22.04-.18-.99-.85-4.07-.88-4.6-.09-1.62,1.45-3.15,1.3-5.28-.18-2.45-1.73-4.46-1.81-6.07-.11-2.1,2.32-3.85.77-6.5l1.57.27,1.41,2.68c1.08-.59.45-2.18.67-2.61.07-.13,2.05.3,2.79-.64,1.26.47.61,2.63,1,3.01.16.16.99-.12,1.34.09.38.24.55,1.45,1.31,2.13,2.11,1.88,5.39,2.3,7.63,3.54,1.46.81,7.6,5.26,8.17,6.49.39.85.12,1.98.5,2.99,1.2,3.17,3.45,7.44,4.8,11.01,5.03,13.3,11.17,26.84,16.11,40.32,1.74,4.75,3.46,9.84,4.66,14.68,1.67-1.45,3.13-4.8,4.02-6.96.83-2.02,4.24-14.26,5.57-14.51l1.88.55c-.44,2.15-1.18,4.25-1.63,6.38-.11.54.21,1.12.09,1.68-.21.99-1.83,4.96-1.81,5.51.01.34.88,2.6,1.72,2.24,1.29-.54.7-2.36,1.69-2.65-.42,2.51.88,6.11,2.67,2.62.35-.68.02-1.36.14-1.6,4.21-7.88,5.72-15.52,8.87-23.8.14-.37,1.21-.57,1.56-1.49,1.99-5.17,3.52-10.56,5.1-15.88,2.94.64,2.09,3.27,1.8,5.6,1.31,1.13,2.94-3.26,3.29-4.16,1.3-3.38,1.82-7.65,3.15-10.97,5.37-13.39,10.06-27.09,14.69-40.62.95-2.78,1.72-5.69,3.34-8.19-1.27-1.62-1.24.58-2.03,1.1-2.47,1.63-3.86.44-6.51,3.87-.47.61-.76-.38-1.57-.12,3.89-3.52,8.85-7.92,6.87-13.75-1.8,1.3-1.33,2.98-1.87,4.23-.35.8-2.17,1.22-2.31,2.56l-2.97.77c-.08-1.52,1.93-1.87,2.95-2.99s1.43-3.29,2.95-3.5l-2.14-1.86c-1.21-1.92,2.11-3.53-1.17-3.18l-.11-2.03c1.52.57,2.23,1.91,2.31,3.45h1.46s.12,2.57.12,2.57l2.01-1.12.64,2.56c1.74-.82,2.3-.48,3.88.34,1.32-1.15.3-2.97.96-4.58.4-.98,2.05-1.61,2.06-2.01.02-.48-1.7-1.53-.88-3.83,1.09-3.08,4.65-5.01,7.68-5.61l-.04-2.52,2.08.42-1.98-4.02-1.79.58.61,2.03-1.33-.44c-.07-.93.25-2.7-.27-3.48-.95-1.44-2.99-.82-2.85-3.11l2.08.42-.58-1.52c.56-.11,1.04-.01,1.58.16,1.95.62,4.01,2.86,5.51,3.99Z"/>
+    <path d="M251.29,252.78c9.54,7.8,20.49,22.35,26.28,33.35,5.98,11.36,5.51,35.74,4.26,49.09-2.39,25.52-16.59,55.91-38.86,69.75-3.24,2.01-6.74,2.97-10.12,4.32-3.46,1.39-6.67,2.34-10.16,3.34-.94.27-1.03,2.23-3.17.93,2.56-3.11-2.59-.38-3.36-.31-2.53.24-5.28-.92-7.39-.94-.55,0-.69,1.05-1.29,1.06-3.03.07-7.13-1.43-10.39-1.14l.68-1.28c-.97-.47-2.27-.09-3.16-.43-6.51-2.5-13.73-4.66-20.8-6.36-1.61-.39-6.02-.62-6.88-.96-.8-.32.24-2.57-2.29-2.82-1.65,2.84-3.54-.25-5.13-.86-2.17-.84-7.96-1.31-7.61-4.51l-1.4,1.14c-1.9-2.32-5.83-2.13-7.84-3.14-2.25-1.13-9.64-7.97-11.81-6.21l.34,1.51c-5.45.12-6.2-3.3-9.53-6.74-6.7-6.93-12.18-11.4-15.2-20.9-8.94-28.1,1.64-60.92,16.32-85.64,7.35-12.37,17.64-22.86,29.13-31.44l-3.54-1.93c0-4.44,2.53-5.87,6.29-7,8.73-2.62,12.74-1.21,21.63-.51,27.12,2.15,51.41-.65,74.99,18.63ZM224.02,264.36c-3.51-3.33-8.88-4.95-13.57-6.3.43,1.24,3.05,2.89,4.18,3.56,3.7,2.2,9.92,5.49,13.86,7.32,2.14,1,4.57,1.68,6.75,2.61-1.34-4.55-6.15-6.27-9.93-8.3l-1.29,1.11ZM214.87,271.02c-5-3.17-11.5-6.19-17.73-5.75-1.84.13-1.93,1.14-2.73,1.24-.44.06-8.16-1.14-8.56-1.3-.7-.27-2.33-2.7-2.6-2.49-.68,4.53-2.21,2.31-4.47,2.52-.61.06-.78.93-.91.95-.55.06-1.4-1.21-2.27-.39l-2.5,2.68,1.19,1.01-2.14,1.26c-.43.07-3.33-4.24-4.16-4.9-.23-.18-3.06-1.68-3.62-1.46-7.42,7.97-13.28,17.22-17.95,27.03-8.28,17.41-13.14,35.75-5.35,53.82,7.57,17.57,29.9,23.54,45.32,32.42l22.2,2.06-2.16,4.53c.61,1.44,1.79,2.65,3.4,2.88.39.06,6.94-2.84,7.28-3.05,6.27-3.97,9.56-10.04,14.67-14.36,3.09-2.62,8-4.87,11.05-8.64,2.31-2.85,3.47-11.07,5.99-14.54l-2.2.17-.33-2.97c-2.59.84-4.21.36-4.95,3.8-3.36-.8.63-5.48,1.21-7.92,1.03-4.34.19-8.38.28-12.31.07-3.42,2.3-6.96,2.94-10.51.16-.89.96-7.44.94-7.87-.06-1.2-2.01-1.84-2.03-2.92-.01-.96,1.08-1.68,1.27-2.4.14-.56-3.39-7.38-3.5-7.81-.31-1.31,1.72-3.69-.31-7.28-2.69-4.77-16.52-11.52-21.87-14.52-2.14-1.2-3.45-1.74-5.38-2.97ZM257.08,302.38c1.66-1.14-2.25-9.64-3.54-8.84-.95,1.4,2.21,9.76,3.54,8.84ZM257.4,318.91c-.15-.71.98-1.57,1.05-2.62.27-4.01-.04-8.46-1.88-11.87-1.78,4.16,1.3,9.55,0,13.54-.35,1.07-1.79,1.51-1.82,2.23-.03.57,3.82,3.44,1.24,6.49l-1-1.69c-.25,1.55-4.21,9.85-.73,9.92,3.6-2.92,3.81-10.4,4.14-15.03.04-.55-.97-.81-1-.96Z"/>
+    <path d="M370.08,160.85c.51.43,3.01-.4,2.93,1.76-4.59,3.18-1.46,9.64-1.28,14.7,1.04,28.75,5.5,50.91,11.81,78.35,2.37,10.29,1.1,26.1,4.74,34.36.89,2.01,3.61,3.86,4.08,6.32.98,5.2-5,7.83-1.12,12.58-2.18,1.33-1.95-1.41-3.35-2.15-3.36-1.79-2.91,1.37-3.24,1.56-3.16,1.78-2.2.26-4.98,3.12-4.31,4.43-8.99,1.71-13.32.6-1.19-.3-2.88.32-4.36-.1-4.22-1.2-3.68-5.63-5.37-7.81-.41-.53-5.87-4.64-6.89-5.54-4.41-3.91-9.24-10.52-16.04-8.94,1.85,2.72,3.07,5.82,4.62,8.72.48.91.78,10.44,1.16,11.29,1.83,4.13,6.87,30.14,6.02,34.64s-2.93,12.27-3.74,15.08c-.42,1.45.9,4.08-1.41,6.04-2.55-5.94-7.75-1.52-10.17-1.68-.34-.02-5.78-2.47-6.2-2.78-11.51-8.62-24.06-69.06-26.97-83.51-2.92-14.52-3.93-29.27-7.13-43.67,5.03-4.15,7.57-2.96,12.92-3.27.77-.04,1.7-1.07,2.7-1.16,9.04-.8,26.56,17.09,33.53,22.92,3.23,2.7,21.88,19.11,24.57,17.8l-1.6-23.58c-.86-3.74-2.26-8.4-2.79-12.1-3.43-23.63-7.12-46.91-10.89-69.95-.14-.88-1.4-1.8-1.51-2.87-.02-1.69,9.81-6.08,9.78-8.41,4.27-.94,11.23-.18,13.13,4.37.46,1.1,0,3.01.38,3.34Z"/>
+  </g>
+  <path d="M816.96,45.79c2.74,1.87,5.51,3.82,8.2,5.78.6.44.89,1.37,1.78,2,.84.59,5.43,2.29,5.71,2.69.51.72.46,1.79.87,2.51.18.31.84.01,1.06.36,1.95,3.01,4.01,13.36,4.82,17.41,5.18,25.99,5.56,53.38,9.49,79.87.85,5.74,2.41,11.82,3.17,17.42.25,1.83-.42,4.09-.36,4.31,3.9,13.41,4.14,28.35,8.7,41.96.11.33.95-.27,1.18.58.48,1.75-.44,3.31-.39,4.72s.9,2.9.92,4.22c.01,1.22-1.86,10.64-2.24,12.22-.18.75-1.33,1.25-1.61,1.8-.27.54.27,1.2-.16,1.56-.64.55-2.43,1.08-3.32,1.57-.78.43-1,1.25-1.97,1.55-2.33.72-3.46-2.83-4.74-3.9-.51-.42-1.48-.27-2.19-.83-3.55-2.83-3.86-8.85-5.6-12.22-.54-1.04-2.11-2.37-2.83-3.75-2.69-5.1-.38-8.65-1.21-13.21-.31-1.72-1.82-3.06-2-5.72-.57-8.84-1.67-17.95-3.17-26.74-.98-5.79-1.37-11.77-4.18-17l1.17-.69-1.45-9.53-1.32.39c.36-1.89-.32-3.84-1.23-5.51l1.62.47c-.75-3.17-.34-7.1-1.36-10.07-.46-1.34-1.78-2.13-1.66-4.34.04-.75,1.3-1.11,1.16-1.94-.14-.86-1.41-2.29-1.7-3.37-.37-1.36.17-4.51-.56-6.03l1.03.17c.21-1.84-1.01-2.89-1.41-4.66-1.53-6.78-1.5-17.14-2.46-24.53-.88-6.78-3.39-27.53-6.28-32.81-.85-1.56-2.55-2.39-2.67-4.82-.06-1.15,1.08-2.99,1.34-4.18.86-3.93.19-7.8,5.86-7.71Z"/>
+  <path d="M847.71,267.79c.3.16,2.93-.75,3.69-.8,5.72-.37,18.79,3.79,22.13,8.41,1.57,2.17,1.66,3.23,3.74,5.18,1.05.98,1.38,7.45,1.27,9.2-.22,3.36-1.77,5.87-5.36,6.18-4.55.38-9.04-.46-13.12-1.98-6.31-2.36-11.42-3.82-14.89-10.2-.6-1.11-.75-2.88-1.13-3.73-.09-.21-1.42.11-1.3-1.3,2.53-.03.17-3.6,3.39-3.08.77-1.82-.67-2.77-.5-4.58.12-1.27,1.54-2.9,1.2-4.43l.88,1.14Z"/>
+</svg>
+</a>
+  <h1>Pole System Configurator <small>27mm · 26.9mm OD · RAL 9005 black</small></h1>
+  <div class="grow"></div>
+  <button class="btn primary" id="btnAddPole">+ Add pole</button>
+  <label class="inline-fld" title="Which angles new poles snap to">
+    <select id="snapSel">
+      <option value="ortho">Right angles only</option>
+      <option value="fittings">45° steps — stock fittings</option>
+      <option value="free">Any angle — swivel fittings</option>
+    </select>
+  </label>
+  <div class="seg proj">
+    <button class="chip" id="projName" title="Click to rename this design">Untitled</button>
+    <button class="btn" id="btnSave" title="Ctrl+S">Save</button>
+    <button class="btn" id="btnOpen" title="Open a saved design">Open</button>
+    <input type="file" id="fileIn2" accept="application/json,.json" hidden>
+  </div>
+  <div class="seg">
+    <button class="btn" id="btnUndo" title="Ctrl+Z">Undo</button>
+    <button class="btn" id="btnRedo" title="Ctrl+Shift+Z">Redo</button>
+    <button class="btn" id="btnFrame" title="F">Fit view</button>
+    <button class="btn" id="btnClear">Clear</button>
+  </div>
+</header>
+
+<div id="viewport">
+  <div id="marquee"></div>
+  <div id="liveLen">0 mm</div>
+  <div id="restoreBar">
+    <span id="restoreMsg"></span>
+    <button class="rb-btn" id="rbFresh">Start fresh</button>
+    <button class="rb-x" id="rbClose">×</button>
+  </div>
+  <div id="toast"></div>
+  <div id="xform"><b id="xformLabel"></b><span id="xformHint"></span></div>
+
+  <div id="poleWidget">
+    <div class="pw-head">
+      <span id="pwTitle">Pole</span>
+      <button class="pw-x" id="pwClose" title="Close">×</button>
+    </div>
+    <div class="pw-len">
+      <input type="number" id="pwNum" step="1"> <span>mm cut length</span>
+    </div>
+    <input type="range" id="pwSlider" min="100" max="3000" step="10">
+    <div class="pw-stock" id="pwStock"></div>
+    <div class="pw-foot">
+      <label class="pw-chk"><input type="checkbox" id="pwStretch" checked> Stretch structure</label>
+      <button class="pw-btn" id="pwFlip" title="Grow from the other end">⇄ Flip</button>
+      <button class="pw-btn" id="pwDup" title="Continue this pole (Shift+D)">↗ Continue</button>
+    </div>
+    <label class="pw-chk pw-lock" title="Hold Shift to invert while dragging">
+      <input type="checkbox" id="pwLock" checked> Lock to fitting angles
+    </label>
+    <label class="pw-chk" title="Only use whole pipes as sold — no cutting, no offcuts">
+      <input type="checkbox" id="pwStd"> Standard pipe lengths only
+    </label>
+    <div class="pw-note" id="pwNote"></div>
+  </div>
+
+  <div id="hud">
+    <span id="hudMode">Draw</span>
+    <span id="hudPlane">Height 0 mm</span>
+    <span id="hudCount">0 joints</span>
+  </div>
+  <div id="legend">
+    <b>Camera</b> — middle-drag orbits, <kbd>Shift</kbd>+middle pans,
+    scroll zooms. Right-drag also pans.<br><br>
+    <b>Left button selects.</b> Click a pole to resize it or a joint to change
+    the fitting. Drag a box to select several poles;
+    <kbd>Shift</kbd>-click adds one.<br><br>
+    <kbd>G</kbd> move · <kbd>R</kbd> rotate the selection.
+    Then <kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> to lock an axis, type a number,
+    click to confirm.<br>
+    Move near a joint or pole and it <b>snaps green to join</b>.<br>
+    <b>Drag any joint</b> to move that end directly.
+    <kbd>Shift</kbd>+<kbd>D</kbd> duplicates the selection and places it.<br><br>
+    <b>+ Add pole</b> (<kbd>A</kbd>) then click to place each point. A run must
+    start <b>on the ground, a joint, or a pole</b> — never mid-air.
+    <kbd>Esc</kbd> or right-click finishes.<br><br>
+    <kbd>F</kbd> fit view · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+  </div>
+</div>
+
+<aside>
+  <div class="tabs">
+    <button class="tab on" data-tab="bom">Costing</button>
+    <button class="tab" data-tab="inspect">Inspect</button>
+    <button class="tab" data-tab="setup">Setup</button>
+    <button class="tab" data-tab="cat">Parts</button>
+  </div>
+
+  <div class="tabpane on" id="pane-bom"><div id="bom"></div></div>
+  <div class="tabpane" id="pane-inspect"><div id="inspector"></div></div>
+
+  <div class="tabpane" id="pane-setup">
+    <h3>Start from</h3>
+    <div class="presets">
+      <button class="btn preset" data-preset="cube">Cube frame</button>
+      <button class="btn preset" data-preset="portal">Portal / arch</button>
+      <button class="btn preset" data-preset="plinth">Plinth</button>
+      <button class="btn preset" data-preset="wall">Bay wall</button>
+    </div>
+
+    <h3>Drawing</h3>
+    <label class="fld"><span>Grid / snap increment</span>
+      <select id="gridSel">
+        <option value="25">25 mm</option>
+        <option value="50">50 mm</option>
+        <option value="100">100 mm</option>
+        <option value="250">250 mm</option>
+        <option value="500">500 mm</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="gridChk"> Show grid</label>
+    <label class="chk"><input type="checkbox" id="fitChk"> Show fitting models</label>
+    <label class="chk"><input type="checkbox" id="angChk"> Show joint angles</label>
+    <label class="chk"><input type="checkbox" id="ang90Chk"> &hellip; including right angles</label>
+
+    <h3>Costing</h3>
+    <label class="fld"><span>Pipe buying</span>
+      <select id="pipeMode">
+        <option value="stock">Cut from stock lengths (optimised)</option>
+        <option value="exact">Buy one stock length per cut</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="vatChk"> Show total inc VAT @ 20%</label>
+
+    <h3>Fabrication assumptions</h3>
+    <div class="row">
+      <label class="fld"><span>Socket engagement</span><input type="number" id="insertNum" min="5" max="60" step="1"></label>
+      <label class="fld"><span>Saw kerf</span><input type="number" id="kerfNum" min="0" max="10" step="0.5"></label>
+    </div>
+    <label class="fld"><span>Tube wall thickness (mm) — for weight only</span>
+      <input type="number" id="wallNum" min="1" max="6" step="0.1"></label>
+    <p class="hint">Wall thickness is not published on the pipe page; 3.2&nbsp;mm is the
+      usual spec for 26.9&nbsp;mm key clamp tube. It affects the weight estimate only.</p>
+
+    <h3>Tidy up</h3>
+    <p class="hint" style="margin-top:0">Joins poles that were left sitting near each
+      other without actually connecting. Ends that nearly touch become one joint;
+      an end resting on another pole becomes a tee.</p>
+    <div class="row">
+      <label class="fld"><span>Join anything within</span>
+        <input type="number" id="weldTol" min="1" max="200" step="1" value="20"></label>
+      <label class="fld"><span>&nbsp;</span>
+        <button class="btn" id="btnWeld" style="width:100%">Weld loose joints</button></label>
+    </div>
+
+    <h3>Save &amp; share</h3>
+    <p class="hint" style="margin-top:0">Your work is kept in this browser automatically.
+      Use <b>Save</b> in the toolbar to write a <code>.json</code> file you can keep in a
+      project folder, back up or send to someone.</p>
+    <button class="btn" id="btnJson" style="width:100%">Save a copy as&hellip;</button>
+    <button class="btn" id="btnCsv" style="width:100%;margin-top:8px">Export BOM + cut list (.csv)</button>
+    <label class="filein">Open a saved design
+      <input type="file" id="fileIn" accept="application/json,.json" style="margin-top:6px">
+    </label>
+  </div>
+
+  <div class="tabpane" id="pane-cat"><div id="cat"></div></div>
+
+  <div class="total"><span id="totalNote">inc VAT</span><b id="grandTotal">£0.00</b></div>
+</aside>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="data/catalogue.js"></script>
+<script src="src/models.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
