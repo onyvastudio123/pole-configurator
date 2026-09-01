@@ -3203,6 +3203,49 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
     return best;
   }
 
+  /**
+   * The node to use for a point being placed. Prefers an existing joint, then a
+   * point along an existing pole — which splits that pole into a tee — and only
+   * makes a loose node if it is really out on its own. Every point of a run
+   * goes through this, not just the first, or a run drawn *into* an existing
+   * pole would end up touching it with no fitting between them.
+   */
+  function nodeOrSplitAt(p, skipEdgeIds) {
+    const tol = Math.max(60, state.settings.grid * 0.45);
+    const near = nodeNear(p, tol);
+    if (near) return near.id;
+
+    const skip = skipEdgeIds || [];
+    let best = null, bd = tol;
+    state.edges.forEach((e) => {
+      if (skip.indexOf(e.id) !== -1) return;
+      const a = state.nodes.find((n) => n.id === e.a);
+      const b = state.nodes.find((n) => n.id === e.b);
+      if (!a || !b) return;
+      const ap = new THREE.Vector3(a.p[0], a.p[1], a.p[2]);
+      const bp = new THREE.Vector3(b.p[0], b.p[1], b.p[2]);
+      const ab = bp.clone().sub(ap), len = ab.length();
+      if (len < WELD_END_CLEAR * 2.2) return;
+      const t = THREE.MathUtils.clamp(p.clone().sub(ap).dot(ab) / ab.lengthSq(), 0, 1);
+      const along = t * len;
+      if (along < WELD_END_CLEAR || along > len - WELD_END_CLEAR) return;
+      const cp = ap.clone().add(ab.clone().multiplyScalar(t));
+      const d = p.distanceTo(cp);
+      if (d < bd) { bd = d; best = { edge: e, point: cp }; }
+    });
+
+    if (best) {
+      const id = addNodeAt(best.point);
+      const a = best.edge.a, b = best.edge.b;
+      if (a !== id && b !== id) {
+        state.edges = state.edges.filter((x) => x.id !== best.edge.id);
+        addEdge(a, id); addEdge(id, b);
+      }
+      return id;
+    }
+    return addNodeAt(p);
+  }
+
   /** Where the next point should go, given the mouse and the snap mode. */
   function candidatePoint(ev) {
     // the first point of a run has to land on something solid
@@ -3317,8 +3360,7 @@ if (typeof window !== 'undefined') window.CATALOGUE = CATALOGUE;
           addEdge(a, id); addEdge(id, b);
         }
       } else {
-        const snapped = nodeNear(p, state.settings.grid * 0.45);
-        id = snapped ? snapped.id : addNodeAt(p);
+        id = nodeOrSplitAt(p);
       }
       if (drawFrom) addEdge(drawFrom, id);
       drawFrom = id;
